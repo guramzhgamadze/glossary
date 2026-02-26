@@ -1,0 +1,43 @@
+/* WP Glossary Tooltip – Admin Styles */
+.wpgt-settings-wrap { max-width: 900px; }
+.wpgt-settings-wrap h1 { margin-bottom: 20px; }
+
+.wpgt-tabs { margin-bottom: 0; border-bottom: 1px solid #c3c4c7; }
+
+.wpgt-tab-content {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-top: none;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+}
+
+.wpgt-tab-content .form-table th {
+    width: 240px;
+    padding: 16px 10px 16px 0;
+}
+
+.wpgt-shortcode-help {
+    background: #f6f7f7;
+    border-left: 4px solid #2563eb;
+    padding: 16px 20px;
+    margin-top: 24px;
+    border-radius: 2px;
+}
+.wpgt-shortcode-help dt {
+    font-weight: 600;
+    margin-top: 12px;
+}
+.wpgt-shortcode-help dd {
+    margin-left: 16px;
+    color: #555;
+}
+
+.wpgt-meta-wrap .form-table th { width: 200px; }
+
+/* Color picker swatch */
+.wp-color-result { border-radius: 3px !important; }
+
+/* List table columns */
+.column-wpgt_tooltip  { width: 30%; }
+.column-wpgt_synonyms { width: 20%; }

@@ -1,0 +1,326 @@
+/* WP Glossary Tooltip – Public Styles */
+/* -------------------------------------------------------
+   CSS custom properties (overridable from settings JS)
+------------------------------------------------------- */
+:root {
+    --wpgt-brand:          #2563eb;
+    --wpgt-width:          280px;
+    --wpgt-radius:         6px;
+    --wpgt-shadow:         0 8px 24px rgba(0,0,0,.18);
+    --wpgt-transition:     0.18s ease;
+    --wpgt-glass-opacity:  0.85;   /* set by JS from admin */
+    --wpgt-glass-blur:     12px;   /* set by JS from admin */
+
+    /* dark theme */
+    --wpgt-dark-bg:      #1e293b;
+    --wpgt-dark-text:    #f1f5f9;
+    --wpgt-dark-link:    #93c5fd;
+
+    /* light theme */
+    --wpgt-light-bg:     #ffffff;
+    --wpgt-light-text:   #1e293b;
+    --wpgt-light-border: #e2e8f0;
+    --wpgt-light-link:   #2563eb;
+}
+
+/* -------------------------------------------------------
+   Trigger word underline
+------------------------------------------------------- */
+.wpgt-tooltip-trigger {
+    border-bottom: 1.5px dashed var(--wpgt-brand);
+    cursor: help;
+    position: relative;
+    display: inline;
+    transition: border-color var(--wpgt-transition), color var(--wpgt-transition);
+}
+.wpgt-tooltip-trigger:hover,
+.wpgt-tooltip-trigger:focus {
+    border-bottom-style: solid;
+    color: var(--wpgt-brand);
+    outline: none;
+}
+
+/* -------------------------------------------------------
+   Tooltip bubble — position:fixed so it escapes
+   any Elementor stacking context. JS sets top/left.
+------------------------------------------------------- */
+.wpgt-tooltip-bubble {
+    position: fixed;
+    z-index: 999999;
+    width: var(--wpgt-width);
+    border-radius: var(--wpgt-radius);
+    box-shadow: var(--wpgt-shadow);
+    padding: 12px 14px 10px;
+    font-size: 0.875rem;
+    line-height: 1.55;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--wpgt-transition), transform var(--wpgt-transition);
+    font-style: normal;
+    font-weight: 400;
+    /* animation starts slightly offset */
+    transform: translateY(4px);
+}
+.wpgt-tooltip-bubble.wpgt-visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+/* Arrow — direction controlled by JS adding wpgt-above or wpgt-below class */
+.wpgt-tooltip-bubble::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 0;
+    border: 7px solid transparent;
+    left: 50%;
+    transform: translateX(-50%);
+}
+/* Arrow pointing DOWN (tooltip is above the word) */
+.wpgt-tooltip-bubble.wpgt-above::after {
+    top: 100%;
+    left: var(--wpgt-arrow-left, 50%);
+    transform: translateX(-50%);
+    border-top-color: var(--wpgt-bubble-bg);
+}
+/* Arrow pointing UP (tooltip is below the word) */
+.wpgt-tooltip-bubble.wpgt-below::after {
+    bottom: 100%;
+    left: var(--wpgt-arrow-left, 50%);
+    transform: translateX(-50%);
+    border-bottom-color: var(--wpgt-bubble-bg);
+}
+
+/* -------------------------------------------------------
+   Dark theme
+------------------------------------------------------- */
+.wpgt-theme-dark {
+    --wpgt-bubble-bg: var(--wpgt-dark-glass-bg, rgba(20,30,48,0.85));
+    background: var(--wpgt-dark-glass-bg, rgba(20,30,48,0.85));
+    backdrop-filter: blur(var(--wpgt-glass-blur, 12px)) saturate(1.4);
+    -webkit-backdrop-filter: blur(var(--wpgt-glass-blur, 12px)) saturate(1.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--wpgt-dark-text);
+}
+.wpgt-theme-dark .wpgt-tooltip-title { color: #ffffff; font-weight: 600; }
+.wpgt-theme-dark .wpgt-tooltip-see-more { color: var(--wpgt-dark-link); }
+
+/* -------------------------------------------------------
+   Light theme
+------------------------------------------------------- */
+.wpgt-theme-light {
+    --wpgt-bubble-bg: var(--wpgt-light-glass-bg, rgba(255,255,255,0.85));
+    background: var(--wpgt-light-glass-bg, rgba(255,255,255,0.85));
+    backdrop-filter: blur(var(--wpgt-glass-blur, 12px)) saturate(1.6);
+    -webkit-backdrop-filter: blur(var(--wpgt-glass-blur, 12px)) saturate(1.6);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    color: var(--wpgt-light-text);
+}
+.wpgt-theme-light .wpgt-tooltip-title { color: #0f172a; font-weight: 600; }
+.wpgt-theme-light .wpgt-tooltip-see-more { color: var(--wpgt-light-link); }
+
+
+/* -------------------------------------------------------
+   Branded theme
+------------------------------------------------------- */
+.wpgt-theme-branded {
+    --wpgt-bubble-bg: var(--wpgt-branded-glass-bg, rgba(37,99,235,0.85));
+    background: var(--wpgt-branded-glass-bg, rgba(37,99,235,0.85));
+    backdrop-filter: blur(var(--wpgt-glass-blur, 12px)) saturate(1.4);
+    -webkit-backdrop-filter: blur(var(--wpgt-glass-blur, 12px)) saturate(1.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+.wpgt-theme-branded .wpgt-tooltip-title { color: #fff; font-weight: 600; }
+.wpgt-theme-branded .wpgt-tooltip-see-more { color: rgba(255,255,255,0.85); text-decoration: underline; }
+
+
+/* -------------------------------------------------------
+   Tooltip inner elements
+------------------------------------------------------- */
+.wpgt-tooltip-title {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 0.9375rem;
+}
+.wpgt-tooltip-text {
+    display: block;
+    margin-bottom: 6px;
+}
+.wpgt-tooltip-see-more {
+    display: inline-block;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    text-decoration: none;
+    margin-top: 4px;
+}
+.wpgt-tooltip-see-more:hover { text-decoration: underline; }
+
+/* -------------------------------------------------------
+   Glossary index – [wpgt_glossary]
+------------------------------------------------------- */
+.wpgt-glossary-index { margin: 1.5em 0; }
+
+.wpgt-alphabet-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 1.5em;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+}
+.wpgt-az-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    text-decoration: none;
+    color: var(--wpgt-brand);
+    background: transparent;
+    transition: background 0.15s, color 0.15s;
+}
+.wpgt-az-link:hover,
+.wpgt-az-link:focus {
+    background: var(--wpgt-brand);
+    color: #fff;
+    outline: none;
+}
+
+.wpgt-letter-group { margin-bottom: 2.25em; }
+.wpgt-letter-heading {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--wpgt-brand);
+    margin: 0 0 0.75em;
+    padding-bottom: 4px;
+    border-bottom: 2px solid var(--wpgt-brand);
+    display: inline-block;
+}
+
+.wpgt-term-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 12px;
+}
+
+/* Column grid variants */
+.wpgt-columns-1 { grid-template-columns: 1fr; }
+.wpgt-columns-2 { grid-template-columns: repeat(2, 1fr); }
+.wpgt-columns-3 { grid-template-columns: repeat(3, 1fr); }
+.wpgt-columns-4 { grid-template-columns: repeat(4, 1fr); }
+
+@media ( max-width: 768px ) {
+    .wpgt-columns-3,
+    .wpgt-columns-4 { grid-template-columns: repeat(2, 1fr); }
+}
+@media ( max-width: 480px ) {
+    .wpgt-columns-2,
+    .wpgt-columns-3,
+    .wpgt-columns-4 { grid-template-columns: 1fr; }
+}
+
+.wpgt-term-item {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 12px 14px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.wpgt-term-item:hover {
+    border-color: var(--wpgt-brand);
+    box-shadow: 0 2px 8px rgba(37,99,235,.1);
+}
+
+.wpgt-term-link {
+    display: block;
+    font-weight: 600;
+    font-size: 0.9375rem;
+    text-decoration: none;
+    color: var(--wpgt-brand);
+    margin-bottom: 4px;
+}
+.wpgt-term-link:hover { text-decoration: underline; }
+
+.wpgt-term-excerpt {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: #64748b;
+    line-height: 1.45;
+}
+
+/* -------------------------------------------------------
+   Single-term box – [wpgt_term]
+------------------------------------------------------- */
+.wpgt-term-box {
+    border-left: 4px solid var(--wpgt-brand);
+    padding: 14px 18px;
+    background: #f8fafc;
+    border-radius: 0 6px 6px 0;
+    margin: 1.25em 0;
+}
+.wpgt-term-box__title {
+    margin: 0 0 8px;
+    font-size: 1.05rem;
+}
+.wpgt-term-box__title a { color: var(--wpgt-brand); text-decoration: none; }
+.wpgt-term-box__title a:hover { text-decoration: underline; }
+.wpgt-term-box__definition { margin: 0; color: #374151; }
+
+/* -------------------------------------------------------
+   Search widget – [wpgt_search]
+------------------------------------------------------- */
+.wpgt-search-widget { position: relative; max-width: 480px; }
+.wpgt-search-input {
+    width: 100%;
+    padding: 10px 16px;
+    font-size: 0.9375rem;
+    border: 1.5px solid #d1d5db;
+    border-radius: 6px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    box-sizing: border-box;
+}
+.wpgt-search-input:focus {
+    outline: none;
+    border-color: var(--wpgt-brand);
+    box-shadow: 0 0 0 3px rgba(37,99,235,.15);
+}
+.wpgt-search-results {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    box-shadow: var(--wpgt-shadow);
+    max-height: 320px;
+    overflow-y: auto;
+    z-index: 9999;
+}
+.wpgt-search-result-item {
+    display: block;
+    padding: 10px 14px;
+    text-decoration: none;
+    color: #1e293b;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background 0.12s;
+}
+.wpgt-search-result-item:last-child { border-bottom: none; }
+.wpgt-search-result-item:hover,
+.wpgt-search-result-item:focus {
+    background: #f0f7ff;
+    color: var(--wpgt-brand);
+    outline: none;
+}
+.wpgt-search-result-title  { display: block; font-weight: 600; font-size: 0.9rem; }
+.wpgt-search-result-excerpt { display: block; font-size: 0.8rem; color: #64748b; margin-top: 2px; }
+.wpgt-search-no-results { padding: 10px 14px; color: #94a3b8; font-size: 0.875rem; }
