@@ -1,5 +1,5 @@
 === WP Glossary Tooltip ===
-Contributors: yourname
+Contributors: Guram Zhgamadze
 Tags: glossary, tooltip, dictionary, definitions, terms
 Requires at least: 6.0
 Tested up to: 6.7
