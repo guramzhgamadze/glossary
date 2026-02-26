@@ -1,10 +1,10 @@
 <?php
 /**
  * Plugin Name:       !!! Glossary Tooltip
- * Plugin URI:        https://example.com/wp-glossary-tooltip
+ * Plugin URI:        https://github.com/guramzhgamadze/glossary
  * Description:       A powerful glossary plugin that automatically adds hover tooltips to defined terms throughout your content.
  * Version:           1.0.1
- * Author:            Your Name
+ * Author:            Guram Zhgamadze
  * Author URI:        https://example.com
  * License:           GPL v2 or later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
