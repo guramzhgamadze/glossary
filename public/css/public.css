@@ -8,9 +8,6 @@
     --wpgt-radius:         6px;
     --wpgt-shadow:         0 8px 24px rgba(0,0,0,.18);
     --wpgt-transition:     0.18s ease;
-    --wpgt-glass-opacity:  0.85;   /* set by JS from admin */
-    --wpgt-glass-blur:     12px;   /* set by JS from admin */
-
     /* dark theme */
     --wpgt-dark-bg:      #1e293b;
     --wpgt-dark-text:    #f1f5f9;
@@ -47,7 +44,10 @@
 .wpgt-tooltip-bubble {
     position: fixed;
     z-index: 999999;
-    width: var(--wpgt-width);
+    /* Auto-width: grows with content, but never narrower than 200px or wider than 500px */
+    width: max-content;
+    min-width: 200px;
+    max-width: 500px;
     border-radius: var(--wpgt-radius);
     box-shadow: var(--wpgt-shadow);
     padding: 12px 14px 10px;
@@ -82,24 +82,21 @@
     top: 100%;
     left: var(--wpgt-arrow-left, 50%);
     transform: translateX(-50%);
-    border-top-color: var(--wpgt-bubble-bg);
+    border-top-color: var(--wpgt-arrow-color, #1e293b);
 }
 /* Arrow pointing UP (tooltip is below the word) */
 .wpgt-tooltip-bubble.wpgt-below::after {
     bottom: 100%;
     left: var(--wpgt-arrow-left, 50%);
     transform: translateX(-50%);
-    border-bottom-color: var(--wpgt-bubble-bg);
+    border-bottom-color: var(--wpgt-arrow-color, #1e293b);
 }
 
 /* -------------------------------------------------------
    Dark theme
 ------------------------------------------------------- */
 .wpgt-theme-dark {
-    --wpgt-bubble-bg: var(--wpgt-dark-glass-bg, rgba(20,30,48,0.85));
-    background: var(--wpgt-dark-glass-bg, rgba(20,30,48,0.85));
-    backdrop-filter: blur(var(--wpgt-glass-blur, 12px)) saturate(1.4);
-    -webkit-backdrop-filter: blur(var(--wpgt-glass-blur, 12px)) saturate(1.4);
+    /* background + backdrop-filter set exclusively via JS inline style */
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: var(--wpgt-dark-text);
 }
@@ -110,10 +107,7 @@
    Light theme
 ------------------------------------------------------- */
 .wpgt-theme-light {
-    --wpgt-bubble-bg: var(--wpgt-light-glass-bg, rgba(255,255,255,0.85));
-    background: var(--wpgt-light-glass-bg, rgba(255,255,255,0.85));
-    backdrop-filter: blur(var(--wpgt-glass-blur, 12px)) saturate(1.6);
-    -webkit-backdrop-filter: blur(var(--wpgt-glass-blur, 12px)) saturate(1.6);
+    /* background + backdrop-filter set exclusively via JS inline style */
     border: 1px solid rgba(0, 0, 0, 0.08);
     color: var(--wpgt-light-text);
 }
@@ -125,10 +119,7 @@
    Branded theme
 ------------------------------------------------------- */
 .wpgt-theme-branded {
-    --wpgt-bubble-bg: var(--wpgt-branded-glass-bg, rgba(37,99,235,0.85));
-    background: var(--wpgt-branded-glass-bg, rgba(37,99,235,0.85));
-    backdrop-filter: blur(var(--wpgt-glass-blur, 12px)) saturate(1.4);
-    -webkit-backdrop-filter: blur(var(--wpgt-glass-blur, 12px)) saturate(1.4);
+    /* background + backdrop-filter set exclusively via JS inline style */
     border: 1px solid rgba(255, 255, 255, 0.15);
     color: #fff;
 }

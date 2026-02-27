@@ -1,10 +1,10 @@
 <?php
 /**
  * Plugin Name:       !!! Glossary Tooltip
- * Plugin URI:        https://github.com/guramzhgamadze/glossary
+ * Plugin URI:        https://example.com/wp-glossary-tooltip
  * Description:       A powerful glossary plugin that automatically adds hover tooltips to defined terms throughout your content.
- * Version:           1.0.1
- * Author:            Guram Zhgamadze
+ * Version:           1.0.6
+ * Author:            Your Name
  * Author URI:        https://example.com
  * License:           GPL v2 or later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'WPGT_VERSION',     '1.0.1' );
+define( 'WPGT_VERSION',     '1.0.6' );
 define( 'WPGT_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'WPGT_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'WPGT_PLUGIN_FILE', __FILE__ );
@@ -24,6 +24,7 @@ define( 'WPGT_PLUGIN_FILE', __FILE__ );
 // Load sub-modules
 require_once WPGT_PLUGIN_DIR . 'includes/class-post-type.php';
 require_once WPGT_PLUGIN_DIR . 'includes/class-settings.php';
+require_once WPGT_PLUGIN_DIR . 'includes/class-georgian-stemmer.php';
 require_once WPGT_PLUGIN_DIR . 'includes/class-tooltip-parser.php';
 require_once WPGT_PLUGIN_DIR . 'includes/class-shortcodes.php';
 require_once WPGT_PLUGIN_DIR . 'includes/class-rest-api.php';
@@ -92,10 +93,8 @@ class WP_Glossary_Tooltip {
                 'open_on'          => $settings['open_on']          ?? 'hover',
                 'show_see_more'    => $settings['show_see_more']    ?? true,
                 'link_new_tab'     => $settings['link_new_tab']     ?? true,
-                'glass_opacity'    => $settings['glass_opacity']    ?? 85,
-                'glass_blur'       => $settings['glass_blur']       ?? 12,
-                'tooltip_width'    => $settings['tooltip_width']    ?? 280,
                 'brand_color'      => $settings['brand_color']      ?? '#2563eb',
+                'see_more_color'   => $settings['see_more_color']   ?? '',
             ],
         ] );
     }

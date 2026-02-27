@@ -23,9 +23,9 @@ class WPGT_Settings {
             'tooltip_width'      => 280,          // px
             'brand_color'        => '#2563eb',
             'text_color'         => '#ffffff',
-            'glass_opacity'      => 85,           // 0-100 %
-            'glass_blur'         => 12,            // px
             'link_new_tab'       => true,          // open "Read more" in new tab
+            'tooltip_bg_color'   => '',            // custom bg colour (empty = use theme default)
+            'see_more_color'     => '',            // custom "Read more" link colour (empty = theme default)
         ];
     }
 
