@@ -17,14 +17,21 @@ jQuery( function( $ ) {
         sessionStorage.setItem( 'wpgt_active_tab', hash );
     }
 
-    // Restore active tab from session
-    var saved = sessionStorage.getItem( 'wpgt_active_tab' );
-    if ( saved && $( saved ).length ) {
-        activateTab( saved );
+    // 1. URL query param wins (used after save redirect)
+    var urlParams = new URLSearchParams( window.location.search );
+    var tabFromUrl = urlParams.get( 'wpgt_tab' );
+
+    // 2. Fall back to sessionStorage
+    var tabFromSession = sessionStorage.getItem( 'wpgt_active_tab' );
+
+    var initialTab = ( tabFromUrl && $( '#' + tabFromUrl ).length )
+        ? '#' + tabFromUrl
+        : ( tabFromSession && $( tabFromSession ).length ? tabFromSession : null );
+
+    if ( initialTab ) {
+        activateTab( initialTab );
     } else {
-        // Show first tab
-        var firstHash = $tabs.first().attr( 'href' );
-        activateTab( firstHash );
+        activateTab( $tabs.first().attr( 'href' ) );
     }
 
     $tabs.on( 'click', function( e ) {
@@ -33,7 +40,8 @@ jQuery( function( $ ) {
     } );
 
     /* ----------------------------------------------------------------
-       WordPress color picker
+       WordPress color picker — only the main settings tabs
+       (Styles tab initialises its own pickers separately)
     ---------------------------------------------------------------- */
     $( '.wpgt-color-picker' ).wpColorPicker();
 
