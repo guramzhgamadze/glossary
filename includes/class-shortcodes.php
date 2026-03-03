@@ -69,50 +69,49 @@ class WPGT_Shortcodes {
             ] ];
         }
 
-        $posts = get_posts( $query_args );
-        if ( empty( $posts ) ) {
-            return '<p class="wpgt-no-terms">' . esc_html__( 'No glossary terms found.', 'wp-glossary-tooltip' ) . '</p>';
-        }
+        $posts   = get_posts( $query_args );
+        $columns = max( 1, min( 6, (int) $atts['columns'] ) );
+        $show_az = $atts['show_alphabet'] !== 'false';
 
-        // On a letter archive → flat list (no grouping, no A-Z bar)
-        if ( $current_letter_term && ! is_wp_error( $current_letter_term ) ) {
-            return self::render_flat_list( $posts, (int) $atts['columns'] );
-        }
-
-        // Full glossary — group by first letter
-        $groups = [];
-        foreach ( $posts as $post ) {
-            $letter = mb_strtoupper( mb_substr( $post->post_title, 0, 1, 'UTF-8' ), 'UTF-8' );
-            $groups[ $letter ][] = $post;
-        }
-        ksort( $groups );
-
-        // Build letter → taxonomy archive URL map
-        $letter_urls = [];
-        $tax_terms   = get_terms( [
+        // Always fetch ALL active letters from the taxonomy so the bar is complete
+        // regardless of which letter is currently being viewed.
+        $letter_urls        = [];
+        $all_tax_terms      = get_terms( [
             'taxonomy'   => WPGT_Post_Type::LETTER_TAX,
             'hide_empty' => true,
         ] );
-        if ( ! is_wp_error( $tax_terms ) ) {
-            foreach ( $tax_terms as $tax_term ) {
-                $key  = mb_strtoupper( $tax_term->name, 'UTF-8' );
-                $url  = get_term_link( $tax_term, WPGT_Post_Type::LETTER_TAX );
+        if ( ! is_wp_error( $all_tax_terms ) ) {
+            foreach ( $all_tax_terms as $tax_term ) {
+                $key = mb_strtoupper( $tax_term->name, 'UTF-8' );
+                $url = get_term_link( $tax_term, WPGT_Post_Type::LETTER_TAX );
                 $letter_urls[ $key ] = is_wp_error( $url ) ? '' : $url;
             }
         }
 
-        $columns = max( 1, min( 6, (int) $atts['columns'] ) );
-        $show_az = $atts['show_alphabet'] !== 'false';
+        // Current letter slug for "active" detection in the bar
+        $current_letter_slug = ( $current_letter_term && ! is_wp_error( $current_letter_term ) )
+            ? $current_letter_term->slug
+            : '';
+        $current_letter_name = ( $current_letter_term && ! is_wp_error( $current_letter_term ) )
+            ? mb_strtoupper( $current_letter_term->name, 'UTF-8' )
+            : '';
+
+        // Sort letter_urls keys alphabetically for consistent bar order
+        ksort( $letter_urls );
 
         ob_start();
         ?>
         <div class="wpgt-glossary-index" data-columns="<?php echo $columns; ?>">
-            <?php if ( $show_az ) : ?>
+
+            <?php if ( $show_az && ! empty( $letter_urls ) ) : ?>
             <nav class="wpgt-alphabet-bar" aria-label="<?php esc_attr_e( 'Jump to letter', 'wp-glossary-tooltip' ); ?>">
-                <?php foreach ( $groups as $letter => $_ ) :
-                    $arc_url = $letter_urls[ $letter ] ?? '';
+                <?php foreach ( $letter_urls as $letter => $arc_url ) :
+                    $is_current = ( $letter === $current_letter_name );
                 ?>
-                    <?php if ( $arc_url ) : ?>
+                    <?php if ( $is_current ) : ?>
+                        <span class="wpgt-az-link wpgt-az-current"
+                              aria-current="page"><?php echo esc_html( $letter ); ?></span>
+                    <?php elseif ( $arc_url ) : ?>
                         <a href="<?php echo esc_url( $arc_url ); ?>"
                            class="wpgt-az-link"><?php echo esc_html( $letter ); ?></a>
                     <?php else : ?>
@@ -122,26 +121,45 @@ class WPGT_Shortcodes {
             </nav>
             <?php endif; ?>
 
-            <?php foreach ( $groups as $letter => $letter_posts ) : ?>
-            <section class="wpgt-letter-group" id="wpgt-letter-<?php echo esc_attr( $letter ); ?>">
-                <h3 class="wpgt-letter-heading"><?php echo esc_html( $letter ); ?></h3>
-                <ul class="wpgt-term-list wpgt-columns-<?php echo $columns; ?>">
-                    <?php foreach ( $letter_posts as $post ) : ?>
-                    <li class="wpgt-term-item">
-                        <a href="<?php echo esc_url( get_permalink( $post->ID ) ); ?>" class="wpgt-term-link">
-                            <?php echo esc_html( $post->post_title ); ?>
-                        </a>
-                        <?php
-                        $excerpt = $post->post_excerpt ?: wp_trim_words( strip_tags( $post->post_content ), 18 );
-                        if ( $excerpt ) :
-                        ?>
-                        <p class="wpgt-term-excerpt"><?php echo esc_html( $excerpt ); ?></p>
-                        <?php endif; ?>
-                    </li>
-                    <?php endforeach; ?>
-                </ul>
-            </section>
-            <?php endforeach; ?>
+            <?php if ( empty( $posts ) ) : ?>
+                <p class="wpgt-no-terms"><?php esc_html_e( 'No glossary terms found.', 'wp-glossary-tooltip' ); ?></p>
+
+            <?php elseif ( $current_letter_term && ! is_wp_error( $current_letter_term ) ) : ?>
+                <?php // Single-letter view — flat list, no sub-grouping needed ?>
+                <?php echo self::render_flat_list( $posts, $columns ); ?>
+
+            <?php else : ?>
+                <?php // Full glossary — group by first letter ?>
+                <?php
+                $groups = [];
+                foreach ( $posts as $post ) {
+                    $grp_letter = mb_strtoupper( mb_substr( $post->post_title, 0, 1, 'UTF-8' ), 'UTF-8' );
+                    $groups[ $grp_letter ][] = $post;
+                }
+                ksort( $groups );
+                ?>
+                <?php foreach ( $groups as $grp_letter => $letter_posts ) : ?>
+                <section class="wpgt-letter-group" id="wpgt-letter-<?php echo esc_attr( $grp_letter ); ?>">
+                    <h3 class="wpgt-letter-heading"><?php echo esc_html( $grp_letter ); ?></h3>
+                    <ul class="wpgt-term-list wpgt-columns-<?php echo $columns; ?>">
+                        <?php foreach ( $letter_posts as $post ) : ?>
+                        <li class="wpgt-term-item">
+                            <a href="<?php echo esc_url( get_permalink( $post->ID ) ); ?>" class="wpgt-term-link">
+                                <?php echo esc_html( $post->post_title ); ?>
+                            </a>
+                            <?php
+                            $excerpt = $post->post_excerpt ?: wp_trim_words( strip_tags( $post->post_content ), 18 );
+                            if ( $excerpt ) :
+                            ?>
+                            <p class="wpgt-term-excerpt"><?php echo esc_html( $excerpt ); ?></p>
+                            <?php endif; ?>
+                        </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </section>
+                <?php endforeach; ?>
+            <?php endif; ?>
+
         </div>
         <?php
         return ob_get_clean();

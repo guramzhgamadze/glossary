@@ -44,10 +44,14 @@
 .wpgt-tooltip-bubble {
     position: fixed;
     z-index: 999999;
-    /* Auto-width: grows with content, but never narrower than 200px or wider than 500px */
+    /* Auto-width: grows with content, but never narrower than 200px or wider than viewport */
     width: max-content;
     min-width: 200px;
-    max-width: 500px;
+    max-width: min(500px, calc(100vw - 24px));
+    /* Always wrap long words / URLs so nothing bleeds off-screen on mobile */
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
     border-radius: var(--wpgt-radius);
     box-shadow: var(--wpgt-shadow);
     padding: 12px 14px 10px;
@@ -182,6 +186,24 @@
     background: var(--wpgt-brand);
     color: #fff;
     outline: none;
+}
+/* Current letter — non-clickable, visually distinct */
+span.wpgt-az-current {
+    background: transparent;
+    color: #94a3b8;
+    cursor: default;
+    border: 1px solid #e2e8f0;
+}
+
+/* -------------------------------------------------------
+   Mobile: keep tooltip fully inside viewport
+------------------------------------------------------- */
+@media ( max-width: 600px ) {
+    .wpgt-tooltip-bubble {
+        font-size: 0.8125rem;
+        padding: 10px 12px 8px;
+        max-width: calc(100vw - 24px);
+    }
 }
 
 .wpgt-letter-group { margin-bottom: 2.25em; }
