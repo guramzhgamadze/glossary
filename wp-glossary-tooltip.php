@@ -1,11 +1,11 @@
 <?php
 /**
- * Plugin Name:       !!! Glossary Tooltip
- * Plugin URI:        https://example.com/wp-glossary-tooltip
- * Description:       A powerful glossary plugin that automatically adds hover tooltips to defined terms throughout your content.
- * Version:           1.0.6
- * Author:            Your Name
- * Author URI:        https://example.com
+ * Plugin Name:       ! Glossary Tooltip
+ * Plugin URI:        https://github.com/guramzhgamadze/glossary
+ * Description:       A powerful glossary plugin that automatically adds hover tooltips to defined terms throughout your content. Built with full Georgian language support including declension-aware matching.
+ * Version:           1.0.7
+ * Author:            Guram Zhgamadze
+ * Author URI:        https://github.com/guramzhgamadze
  * License:           GPL v2 or later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       wp-glossary-tooltip
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'WPGT_VERSION',     '1.0.6' );
+define( 'WPGT_VERSION',     '1.0.7' );
 define( 'WPGT_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'WPGT_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'WPGT_PLUGIN_FILE', __FILE__ );
@@ -84,10 +84,10 @@ class WP_Glossary_Tooltip {
         );
 
         wp_localize_script( 'wpgt-public', 'wpgtData', [
-            'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
-            'restUrl'      => rest_url( 'wpgt/v1/' ),
-            'nonce'        => wp_create_nonce( 'wp_rest' ),
-            'settings'     => [
+            'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
+            'restUrl'  => rest_url( 'wpgt/v1/' ),
+            'nonce'    => wp_create_nonce( 'wp_rest' ),
+            'settings' => [
                 'tooltip_position' => $settings['tooltip_position'] ?? 'top',
                 'tooltip_theme'    => $settings['tooltip_theme']    ?? 'dark',
                 'open_on'          => $settings['open_on']          ?? 'hover',

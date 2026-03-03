@@ -3,67 +3,73 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 /**
  * Scans post content and wraps glossary term occurrences with tooltip spans.
- * Uses DOM parsing to avoid breaking HTML attributes, tags, or existing links.
+ *
+ * MATCHING ALGORITHM
+ * ==================
+ * We do NOT use a large alternation regex (300 terms × 130 forms = ~39k alternations
+ * causes PHP's PCRE engine to time out on compilation alone).
+ *
+ * Instead we use a two-step O(N) hash-map approach:
+ *
+ * 1. TOKENIZE the text node into Georgian/Latin word tokens using a tiny regex.
+ * 2. NORMALIZE each token (strip soft hyphens, lowercase).
+ * 3. LOOK UP the normalized token in $index['map']  →  O(1) hash map lookup.
+ * 4. BUILD the output string with <span> wrappers around matched tokens.
+ *
+ * The map is built once per page request in get_all_terms_for_parsing() and
+ * cached in the WP object cache. Total cost per page: O(total text characters).
  */
 class WPGT_Tooltip_Parser {
 
     private static bool $initialized = false;
 
-    public static function init() {
+    /** Regex that finds a run of Georgian/Latin/digit chars, allowing soft hyphens inside. */
+    private const WORD_RE = '/[\x{10D0}-\x{10FF}\x{10A0}-\x{10CF}A-Za-z0-9\x{00AD}][\x{10D0}-\x{10FF}\x{10A0}-\x{10CF}A-Za-z0-9\x{00AD}\-]*/u';
+
+    public static function init(): void {
         if ( self::$initialized ) return;
         self::$initialized = true;
         add_filter( 'the_content', [ __CLASS__, 'parse_content' ], 12 );
     }
 
-    /**
-     * Main filter callback.
-     */
     public static function parse_content( string $content, $widget = null ): string {
         if ( empty( $content ) ) return $content;
 
         $settings = WPGT_Settings::get_all();
-
-        // Only run on singular pages of configured post types.
-        // Note: do NOT check in_the_loop() here — Elementor widget filters fire outside the loop.
         if ( ! is_singular() ) return $content;
-        if ( ! in_array( get_post_type(), (array) $settings['parse_post_types'], true ) ) {
-            return $content;
-        }
+        if ( ! in_array( get_post_type(), (array) $settings['parse_post_types'], true ) ) return $content;
 
-        $terms = WPGT_Post_Type::get_all_terms_for_parsing();
-        if ( empty( $terms ) ) return $content;
+        $current_id = (int) get_the_ID();
+        if ( $current_id && get_post_meta( $current_id, '_wpgt_skip_tooltips', true ) ) return $content;
 
-        return self::inject_tooltips( $content, $terms, $settings );
+        $index = WPGT_Post_Type::get_all_terms_for_parsing();
+        if ( empty( $index['map'] ) || empty( $index['terms'] ) ) return $content;
+
+        return self::inject_tooltips( $content, $index, $settings, $current_id );
     }
 
-    /**
-     * Walk text nodes in the HTML and wrap trigger words.
-     */
-    private static function inject_tooltips( string $html, array $terms, array $settings ): string {
+    // ── DOM walker ───────────────────────────────────────────────────────────
+
+    private static function inject_tooltips( string $html, array $index, array $settings, int $current_post ): string {
         if ( ! class_exists( 'DOMDocument' ) ) {
-            return self::inject_tooltips_regex( $html, $terms, $settings );
+            return self::inject_tooltips_simple( $html, $index, $settings, $current_post );
         }
 
-        $doc = new DOMDocument();
-        $use_libxml_errors = libxml_use_internal_errors( true );
-
-        // Wrap in UTF-8 meta so DOMDocument handles encoding properly
+        $doc  = new DOMDocument();
+        $prev = libxml_use_internal_errors( true );
         $doc->loadHTML(
             '<?xml encoding="UTF-8"><div id="wpgt-wrapper">' . $html . '</div>',
             LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
         );
         libxml_clear_errors();
-        libxml_use_internal_errors( $use_libxml_errors );
+        libxml_use_internal_errors( $prev );
 
         $wrapper = $doc->getElementById( 'wpgt-wrapper' );
         if ( ! $wrapper ) return $html;
 
-        $already_seen  = []; // track first-occurrence per title
-        $current_post  = get_the_ID();
+        $already_seen = [];
+        self::walk_node( $wrapper, $doc, $index, $settings, $already_seen, $current_post );
 
-        self::walk_node( $wrapper, $doc, $terms, $settings, $already_seen, $current_post );
-
-        // Extract inner HTML of wrapper
         $inner = '';
         foreach ( $wrapper->childNodes as $child ) {
             $inner .= $doc->saveHTML( $child );
@@ -71,149 +77,111 @@ class WPGT_Tooltip_Parser {
         return $inner;
     }
 
-    /**
-     * Recursively walk DOM nodes; skip scripts, styles, links, and heading tags when configured.
-     */
     private static function walk_node(
-        DOMNode $node,
-        DOMDocument $doc,
-        array $terms,
-        array $settings,
-        array &$already_seen,
-        int $current_post
-    ) {
-        $skip_tags = [ 'script', 'style', 'code', 'pre', 'textarea', 'button', 'select' ];
-        if ( ! empty( $settings['exclude_links'] ) ) {
-            $skip_tags[] = 'a';
-        }
+        DOMNode $node, DOMDocument $doc, array $index,
+        array $settings, array &$already_seen, int $current_post
+    ): void {
+        $skip = [ 'script','style','code','pre','textarea','button','select' ];
+        if ( ! empty( $settings['exclude_links'] ) )    $skip[] = 'a';
         if ( ! empty( $settings['exclude_headings'] ) ) {
-            foreach ( [ 'h1', 'h2', 'h3', 'h4', 'h5', 'h6' ] as $h ) {
-                $skip_tags[] = $h;
-            }
+            foreach ( [ 'h1','h2','h3','h4','h5','h6' ] as $h ) $skip[] = $h;
         }
-        // Also skip our own tooltip spans to avoid double-wrapping
-        $skip_tags[] = 'wpgt-span'; // placeholder
 
         if ( $node->nodeType === XML_ELEMENT_NODE ) {
-            $tag = strtolower( $node->nodeName );
-            if ( in_array( $tag, $skip_tags, true ) ) return;
-
-            // Skip existing wpgt spans
-            if ( $tag === 'span' && $node instanceof DOMElement && $node->getAttribute( 'data-wpgt' ) ) {
-                return;
-            }
+            if ( in_array( strtolower( $node->nodeName ), $skip, true ) ) return;
+            if ( $node instanceof DOMElement && $node->getAttribute( 'data-wpgt' ) ) return;
         }
 
-        // Process child nodes (collect first to avoid mutation issues)
-        $children = [];
-        foreach ( $node->childNodes as $child ) {
-            $children[] = $child;
-        }
-
+        $children = iterator_to_array( $node->childNodes );
         foreach ( $children as $child ) {
             if ( $child->nodeType === XML_TEXT_NODE ) {
-                $replaced = self::replace_in_text_node( $child, $doc, $terms, $settings, $already_seen, $current_post );
-                if ( $replaced ) {
-                    // Replace text node with fragment
-                    $node->replaceChild( $replaced, $child );
-                }
+                $frag = self::process_text_node( $child, $doc, $index, $settings, $already_seen, $current_post );
+                if ( $frag ) $node->replaceChild( $frag, $child );
             } elseif ( $child->nodeType === XML_ELEMENT_NODE ) {
-                self::walk_node( $child, $doc, $terms, $settings, $already_seen, $current_post );
+                self::walk_node( $child, $doc, $index, $settings, $already_seen, $current_post );
             }
         }
     }
 
     /**
-     * Replace trigger words in a text node with tooltip spans.
-     * Returns a DocumentFragment if replacements were made, null otherwise.
+     * Core matching logic — hash-map, no large regex.
      *
-     * IMPORTANT: all regex matching is done against the ORIGINAL plain-text nodeValue.
-     * We collect every match (offset + length + term) first, resolve overlaps, then
-     * do a single left-to-right pass to build the final HTML string.
-     * This prevents the regex from accidentally matching text inside already-injected
-     * <span> attribute values on subsequent iterations (which caused raw HTML to leak
-     * into the rendered page as visible text).
+     * Finds all Georgian/Latin word tokens in the text, normalizes each,
+     * looks it up in $map, collects matches, then builds the output.
      */
-    private static function replace_in_text_node(
-        DOMText $text_node,
-        DOMDocument $doc,
-        array $terms,
-        array $settings,
-        array &$already_seen,
-        int $current_post
+    private static function process_text_node(
+        DOMText $text_node, DOMDocument $doc, array $index,
+        array $settings, array &$already_seen, int $current_post
     ): ?DOMDocumentFragment {
         $text = $text_node->nodeValue;
         if ( trim( $text ) === '' ) return null;
 
-        $case_flag  = ! empty( $settings['case_sensitive'] ) ? '' : 'i';
+        $map        = $index['map'];        // normalized_form => term_id
+        $terms_data = $index['terms'];      // term_id => term_info
         $first_only = ! empty( $settings['first_occurrence'] );
 
-        // --- Pass 1: collect all matches from the ORIGINAL plain text ---
-        // Matching always runs against $text (never against accumulated HTML) so that
-        // we never accidentally match text inside injected <span> attribute values.
-        $matches_found = [];
-        $seen_in_node  = []; // first_occurrence tracking within this text node
-
-        foreach ( $terms as $term ) {
-            if ( (int) $term['id'] === $current_post ) continue;
-
-            foreach ( $term['triggers'] as $trigger ) {
-                if ( empty( $trigger ) ) continue;
-
-                $key = strtolower( $trigger );
-                if ( $first_only && ( isset( $already_seen[ $key ] ) || isset( $seen_in_node[ $key ] ) ) ) {
-                    continue;
-                }
-
-                // Build a stem-aware pattern (Georgian) or literal pattern (other scripts).
-                // self::build_pattern() returns null if the pattern would be unsafe.
-                $pattern = self::build_pattern( $trigger, $case_flag );
-                if ( $pattern === null ) continue;
-
-                if ( preg_match_all( $pattern, $text, $all_matches, PREG_OFFSET_CAPTURE ) === false ) continue;
-                if ( empty( $all_matches[1] ) ) continue;
-
-                // For first_occurrence only take the first hit in this node.
-                $hits = $first_only ? [ $all_matches[1][0] ] : $all_matches[1];
-
-                foreach ( $hits as $hit ) {
-                    $matches_found[] = [
-                        'offset'  => $hit[1],           // byte offset in $text
-                        'length'  => strlen( $hit[0] ), // byte length
-                        'matched' => $hit[0],
-                        'term'    => $term,
-                        'key'     => $key,
-                    ];
-                }
-
-                $seen_in_node[ $key ] = true;
-            }
+        // Find every word-like token with its byte offset
+        if ( ! preg_match_all( self::WORD_RE, $text, $tok_matches, PREG_OFFSET_CAPTURE ) ) {
+            return null;
         }
 
-        if ( empty( $matches_found ) ) return null;
+        $keep = [];
+        foreach ( $tok_matches[0] as $tok ) {
+            $raw    = $tok[0];
+            $offset = $tok[1];
+            $length = strlen( $raw );
 
-        // --- Pass 2: sort by offset, drop overlapping matches ---
-        usort( $matches_found, fn( $a, $b ) => $a['offset'] <=> $b['offset'] );
+            // Normalize: strip soft hyphens, lowercase
+            $norm = mb_strtolower(
+                str_replace( [ '&shy;', '&#173;', "\xc2\xad" ], '', $raw ),
+                'UTF-8'
+            );
 
-        $non_overlapping = [];
-        $last_end        = 0;
-        foreach ( $matches_found as $m ) {
+            $term_id = $map[ $norm ] ?? null;
+            if ( $term_id === null )          continue;
+            if ( $term_id === $current_post ) continue;
+
+            $term_key = (string) $term_id;
+            if ( $first_only && isset( $already_seen[ $term_key ] ) ) continue;
+
+            $keep[] = [
+                'offset'  => $offset,
+                'length'  => $length,
+                'matched' => $raw,
+                'term_id' => $term_id,
+                'key'     => $term_key,
+            ];
+        }
+
+        if ( empty( $keep ) ) return null;
+
+        // Maximal munch: sort by offset, drop overlaps (prefer longer at same pos)
+        usort( $keep, fn( $a, $b ) =>
+            $a['offset'] !== $b['offset']
+                ? $a['offset'] - $b['offset']
+                : $b['length'] - $a['length']
+        );
+        $non_overlap = [];
+        $last_end    = 0;
+        foreach ( $keep as $m ) {
             if ( $m['offset'] >= $last_end ) {
-                $non_overlapping[] = $m;
-                $last_end = $m['offset'] + $m['length'];
+                $non_overlap[] = $m;
+                $last_end      = $m['offset'] + $m['length'];
             }
         }
+        if ( empty( $non_overlap ) ) return null;
 
-        if ( empty( $non_overlapping ) ) return null;
-
-        // --- Pass 3: single left-to-right pass to build HTML ---
+        // Build HTML
         $html   = '';
         $cursor = 0;
-        foreach ( $non_overlapping as $m ) {
-            // Plain text before this match — escape for HTML output.
+        foreach ( $non_overlap as $m ) {
             $html .= esc_html( substr( $text, $cursor, $m['offset'] - $cursor ) );
-
-            $term  = $m['term'];
+            $term  = $terms_data[ $m['term_id'] ] ?? null;
+            if ( ! $term ) {
+                $html  .= esc_html( $m['matched'] );
+                $cursor = $m['offset'] + $m['length'];
+                continue;
+            }
             $id    = (int) $term['id'];
             $html .= sprintf(
                 '<span class="wpgt-tooltip-trigger" data-wpgt="%d" data-tooltip="%s" data-title="%s" data-url="%s" tabindex="0" role="term" aria-describedby="wpgt-tip-%d">%s</span>',
@@ -224,138 +192,100 @@ class WPGT_Tooltip_Parser {
                 $id,
                 esc_html( $m['matched'] )
             );
-
             $cursor = $m['offset'] + $m['length'];
             $already_seen[ $m['key'] ] = true;
         }
-        // Remaining plain text after the last match.
         $html .= esc_html( substr( $text, $cursor ) );
 
-        // Build a DOMDocumentFragment from the HTML string.
-        $fragment = $doc->createDocumentFragment();
-        $tmp = new DOMDocument();
+        // Build DocumentFragment
+        $frag = $doc->createDocumentFragment();
+        $tmp  = new DOMDocument();
         libxml_use_internal_errors( true );
         $tmp->loadHTML(
             '<?xml encoding="UTF-8"><body>' . $html . '</body>',
             LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
         );
         libxml_clear_errors();
-
         $body = $tmp->getElementsByTagName( 'body' )->item( 0 );
         if ( ! $body ) return null;
-
         foreach ( $body->childNodes as $child ) {
-            $fragment->appendChild( $doc->importNode( $child, true ) );
+            $frag->appendChild( $doc->importNode( $child, true ) );
         }
-
-        return $fragment;
+        return $frag;
     }
 
+    // ── Fallback (no DOMDocument) ────────────────────────────────────────────
+
     /**
-     * Fallback regex-based replacement (no DOM).
+     * Simple token-replace fallback when DOMDocument is unavailable.
+     * Replaces word tokens inside text nodes only (strips tags, replaces, re-wraps).
+     * Not as safe as the DOM version but never crashes.
      */
-    private static function inject_tooltips_regex( string $html, array $terms, array $settings ): string {
-        $case_flag    = ! empty( $settings['case_sensitive'] ) ? '' : 'i';
+    private static function inject_tooltips_simple( string $html, array $index, array $settings, int $current_post ): string {
+        $map        = $index['map'];
+        $terms_data = $index['terms'];
+        $first_only = ! empty( $settings['first_occurrence'] );
         $already_seen = [];
 
-        foreach ( $terms as $term ) {
-            foreach ( $term['triggers'] as $trigger ) {
-                if ( empty( $trigger ) ) continue;
-                $key = strtolower( $trigger );
-                if ( ! empty( $settings['first_occurrence'] ) && isset( $already_seen[ $key ] ) ) continue;
+        // Split on tags, process only text segments
+        $parts  = preg_split( '/(<[^>]+>)/u', $html, -1, PREG_SPLIT_DELIM_CAPTURE );
+        $inside = false; // inside a skip tag?
+        $depth  = 0;
+        $output = '';
 
-                $pattern = self::build_pattern( $trigger, $case_flag );
-                if ( $pattern === null ) continue;
-                $limit = ! empty( $settings['first_occurrence'] ) ? 1 : -1;
-
-                $new_html = preg_replace_callback(
-                    $pattern,
-                    function( $m ) use ( $term ) {
-                        return sprintf(
-                            '<span class="wpgt-tooltip-trigger" data-wpgt="%d" data-tooltip="%s" data-title="%s" data-url="%s" tabindex="0">%s</span>',
-                            $term['id'],
-                            esc_attr( $term['tooltip'] ),
-                            esc_attr( $term['title'] ),
-                            esc_url( $term['url'] ),
-                            esc_html( $m[1] )
-                        );
-                    },
-                    $html,
-                    $limit
-                );
-
-                if ( $new_html !== $html ) {
-                    $html = $new_html;
-                    $already_seen[ $key ] = true;
-                }
+        foreach ( $parts as $part ) {
+            if ( str_starts_with( $part, '<' ) ) {
+                $output .= $part;
+                continue;
             }
+            $output .= self::replace_tokens_in_text( $part, $map, $terms_data, $current_post, $first_only, $already_seen );
         }
-
-        return $html;
+        return $output;
     }
 
-    /**
-     * Build the regex pattern for a trigger word.
-     *
-     * Georgian triggers: stem the trigger, then build a pattern that matches
-     * the stem followed by any Georgian suffix. This makes the glossary
-     * declension-aware — "სტრესი", "სტრესს", "სტრესისგან" all match a term
-     * stored as "სტრესი".
-     *
-     * Non-Georgian triggers: literal soft-hyphen-tolerant pattern.
-     *
-     * Returns null if the pattern would be unsafe (stem too short, bad regex).
-     */
-    private static function build_pattern( string $trigger, string $case_flag ): ?string {
-        // Strip soft hyphens for script detection only.
-        $trigger_clean = str_replace( "\xc2\xad", '', $trigger );
+    private static function replace_tokens_in_text(
+        string $text, array $map, array $terms_data,
+        int $current_post, bool $first_only, array &$already_seen
+    ): string {
+        if ( trim( $text ) === '' ) return $text;
 
-        if ( WPGT_Georgian_Stemmer::is_georgian( $trigger_clean ) ) {
-            return self::build_georgian_pattern( $trigger_clean, $case_flag );
+        if ( ! preg_match_all( self::WORD_RE, $text, $tok_matches, PREG_OFFSET_CAPTURE ) ) return $text;
+
+        $keep = [];
+        foreach ( $tok_matches[0] as $tok ) {
+            $raw  = $tok[0];
+            $norm = mb_strtolower( str_replace( [ '&shy;', '&#173;', "\xc2\xad" ], '', $raw ), 'UTF-8' );
+            $term_id = $map[ $norm ] ?? null;
+            if ( $term_id === null || $term_id === $current_post ) continue;
+            $key = (string) $term_id;
+            if ( $first_only && isset( $already_seen[ $key ] ) ) continue;
+            $keep[] = [ 'offset' => $tok[1], 'length' => strlen( $raw ), 'matched' => $raw, 'term_id' => $term_id, 'key' => $key ];
+        }
+        if ( empty( $keep ) ) return $text;
+
+        usort( $keep, fn( $a, $b ) => $a['offset'] !== $b['offset'] ? $a['offset'] - $b['offset'] : $b['length'] - $a['length'] );
+        $non_overlap = []; $last_end = 0;
+        foreach ( $keep as $m ) {
+            if ( $m['offset'] >= $last_end ) { $non_overlap[] = $m; $last_end = $m['offset'] + $m['length']; }
         }
 
-        // Non-Georgian: literal match with soft-hyphen tolerance between chars.
-        $raw_chars = preg_split( '//u', $trigger, -1, PREG_SPLIT_NO_EMPTY );
-        $flexible  = implode( '\x{00AD}*', array_map( fn( $c ) => preg_quote( $c, '/' ), $raw_chars ) );
-        return '/(?<![\pL\pN\-_])(' . $flexible . ')(?![\pL\pN\-_])/' . $case_flag . 'u';
-    }
-
-    /**
-     * Build a declension-aware regex for a Georgian trigger.
-     *
-     * 1. Stem the trigger (strip case endings, postpositions, plural marker, -ი).
-     * 2. Build stem portion with soft-hyphen tolerance between each character.
-     * 3. Append a "any Georgian letters/soft-hyphens" tail to absorb any suffix.
-     * 4. Wrap in Unicode word boundaries so we never match mid-word.
-     *
-     * Example: trigger "სტრესი" → stem "სტრეს"
-     *   pattern core: სტ\x{00AD}*რ\x{00AD}*ე\x{00AD}*ს[\x{10D0}-\x{10FF}\x{00AD}]*
-     *   matches: სტრესი, სტრესს, სტრესმა, სტრესის, სტრესისგან, სტრესებში …
-     */
-    private static function build_georgian_pattern( string $trigger, string $case_flag ): ?string {
-        $stem = WPGT_Georgian_Stemmer::stem( $trigger );
-
-        if ( mb_strlen( $stem, 'UTF-8' ) < WPGT_Georgian_Stemmer::MIN_STEM_LEN ) {
-            return null; // too short — over-matching risk too high
+        $out = ''; $cursor = 0;
+        foreach ( $non_overlap as $m ) {
+            $out  .= esc_html( substr( $text, $cursor, $m['offset'] - $cursor ) );
+            $term  = $terms_data[ $m['term_id'] ] ?? null;
+            if ( ! $term ) { $out .= esc_html( $m['matched'] ); $cursor = $m['offset'] + $m['length']; continue; }
+            $out  .= sprintf(
+                '<span class="wpgt-tooltip-trigger" data-wpgt="%d" data-tooltip="%s" data-title="%s" data-url="%s" tabindex="0">%s</span>',
+                (int)$term['id'], esc_attr($term['tooltip']), esc_attr($term['title']), esc_url($term['url']), esc_html($m['matched'])
+            );
+            $cursor = $m['offset'] + $m['length'];
+            $already_seen[ $m['key'] ] = true;
         }
-
-        // Stem chars with soft-hyphen tolerance between them.
-        $chars    = preg_split( '//u', $stem, -1, PREG_SPLIT_NO_EMPTY );
-        $flexible = implode( '\x{00AD}*', array_map( fn( $c ) => preg_quote( $c, '/' ), $chars ) );
-
-        // Suffix tail: zero or more Georgian Unicode letters + soft hyphens.
-        // U+10D0–U+10FF = Mkhedruli (modern Georgian script).
-        $suffix_tail = '[\x{10D0}-\x{10FF}\x{00AD}]*';
-
-        return '/(?<![\pL\pN\-_])(' . $flexible . $suffix_tail . ')(?![\pL\pN\-_])/' . $case_flag . 'u';
+        $out .= esc_html( substr( $text, $cursor ) );
+        return $out;
     }
 }
 
-// Boot parser
 add_action( 'wp', [ 'WPGT_Tooltip_Parser', 'init' ] );
-
-// Elementor: filter widget HTML output.
-// render_content passes ($widget_content, $widget_instance) — declare 2 accepted args.
-// elementor/frontend/the_content is a FILTER (returns content), so we use add_filter.
-add_filter( 'elementor/widget/render_content',   [ 'WPGT_Tooltip_Parser', 'parse_content' ], 12, 2 );
-add_filter( 'elementor/frontend/the_content',    [ 'WPGT_Tooltip_Parser', 'parse_content' ], 12 );
+add_filter( 'elementor/widget/render_content', [ 'WPGT_Tooltip_Parser', 'parse_content' ], 12, 2 );
+add_filter( 'elementor/frontend/the_content',  [ 'WPGT_Tooltip_Parser', 'parse_content' ], 12 );

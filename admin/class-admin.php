@@ -5,12 +5,18 @@ class WPGT_Admin {
 
     public static function init() {
         add_action( 'admin_menu',            [ __CLASS__, 'add_menus'          ] );
+        // Remove any "Re-Order" submenu injected by third-party plugins (e.g. Post Types Order)
+        add_action( 'admin_menu',            [ __CLASS__, 'remove_foreign_menus' ], 9999 );
         add_action( 'add_meta_boxes',        [ __CLASS__, 'add_meta_boxes'     ] );
         add_action( 'save_post',             [ __CLASS__, 'save_meta'          ] );
         add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_assets'     ] );
         add_action( 'admin_post_wpgt_save_settings', [ __CLASS__, 'save_settings' ] );
         add_action( 'admin_post_wpgt_export',        [ __CLASS__, 'export_csv'    ] );
         add_action( 'admin_post_wpgt_import',        [ __CLASS__, 'import_csv'    ] );
+        add_action( 'admin_post_wpgt_sync_letters',     [ __CLASS__, 'sync_letter_taxonomy'  ] );
+        add_action( 'admin_post_wpgt_regen_forms',       [ __CLASS__, 'regen_declined_forms'  ] );
+        add_action( 'save_post',                         [ __CLASS__, 'save_skip_meta'         ] );
+        add_action( 'wp_ajax_wpgt_save_order',        [ __CLASS__, 'ajax_save_order'       ] );
 
         // Custom columns on the term list table
         add_filter( 'manage_' . WPGT_Post_Type::POST_TYPE . '_posts_columns',       [ __CLASS__, 'term_columns'      ] );
@@ -29,6 +35,28 @@ class WPGT_Admin {
             'wpgt-settings',
             [ __CLASS__, 'render_settings_page' ]
         );
+
+    }
+
+    public static function remove_foreign_menus() {
+        $cpt = 'edit.php?post_type=' . WPGT_Post_Type::POST_TYPE;
+        // "Post Types Order" plugin registers slug 'post-types-order-{post_type}'
+        remove_submenu_page( $cpt, 'post-types-order-' . WPGT_Post_Type::POST_TYPE );
+        // Some versions use just 'reorder' or 're-order'
+        remove_submenu_page( $cpt, 'reorder' );
+        remove_submenu_page( $cpt, 're-order' );
+        // Catch-all: remove any submenu whose menu title contains "Re-Order" or "Reorder"
+        global $submenu;
+        if ( isset( $submenu[ $cpt ] ) ) {
+            foreach ( $submenu[ $cpt ] as $key => $item ) {
+                $title = $item[0] ?? '';
+                // Strip HTML tags (some plugins bold the label)
+                $clean = wp_strip_all_tags( $title );
+                if ( stripos( $clean, 're-order' ) !== false || stripos( $clean, 'reorder' ) !== false ) {
+                    unset( $submenu[ $cpt ][ $key ] );
+                }
+            }
+        }
     }
 
     // ------------------------------------------------------------------
@@ -58,6 +86,8 @@ class WPGT_Admin {
             true
         );
         wp_enqueue_style( 'wp-color-picker' );
+        wp_enqueue_script( 'jquery-ui-sortable' );
+
     }
 
     // ------------------------------------------------------------------
@@ -72,6 +102,20 @@ class WPGT_Admin {
             'normal',
             'high'
         );
+
+        // "Skip tooltips" checkbox on all public non-glossary post types
+        $public_types = get_post_types( [ 'public' => true ], 'names' );
+        foreach ( $public_types as $pt ) {
+            if ( in_array( $pt, [ WPGT_Post_Type::POST_TYPE, 'attachment' ], true ) ) continue;
+            add_meta_box(
+                'wpgt-skip-tooltips',
+                __( 'Glossary Tooltips', 'wp-glossary-tooltip' ),
+                [ __CLASS__, 'render_skip_meta_box' ],
+                $pt,
+                'side',
+                'default'
+            );
+        }
     }
 
     public static function render_term_meta_box( WP_Post $post ) {
@@ -126,6 +170,37 @@ class WPGT_Admin {
                                placeholder="<?php esc_attr_e( 'e.g. 42, 77, 103', 'wp-glossary-tooltip' ); ?>" />
                         <p class="description">
                             <?php esc_html_e( 'Comma-separated post IDs of related glossary terms shown at the bottom of the tooltip.', 'wp-glossary-tooltip' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <?php esc_html_e( 'Declined Forms', 'wp-glossary-tooltip' ); ?>
+                    </th>
+                    <td>
+                        <?php
+                        $forms_json = get_post_meta( $post->ID, '_wpgt_declined_forms', true );
+                        $forms      = $forms_json ? json_decode( $forms_json, true ) : [];
+                        if ( ! empty( $forms ) ) :
+                        ?>
+                        <details>
+                            <summary style="cursor:pointer; color:#2563eb; font-size:0.875rem;">
+                                <?php printf(
+                                    esc_html__( '%d forms stored (click to view)', 'wp-glossary-tooltip' ),
+                                    count( $forms )
+                                ); ?>
+                            </summary>
+                            <p style="margin:8px 0 0; font-size:0.8rem; color:#555; line-height:1.8;">
+                                <?php echo esc_html( implode( ', ', $forms ) ); ?>
+                            </p>
+                        </details>
+                        <?php else : ?>
+                        <em style="color:#999; font-size:0.875rem;">
+                            <?php esc_html_e( 'Not generated yet — save this term to generate.', 'wp-glossary-tooltip' ); ?>
+                        </em>
+                        <?php endif; ?>
+                        <p class="description">
+                            <?php esc_html_e( 'Auto-generated from the title and synonyms. Only admins can see this.', 'wp-glossary-tooltip' ); ?>
                         </p>
                     </td>
                 </tr>
@@ -210,6 +285,7 @@ class WPGT_Admin {
                     <a href="#wpgt-tab-index"    class="nav-tab"><?php esc_html_e( 'Index Page',      'wp-glossary-tooltip' ); ?></a>
                     <a href="#wpgt-tab-advanced" class="nav-tab"><?php esc_html_e( 'Advanced',        'wp-glossary-tooltip' ); ?></a>
                     <a href="#wpgt-tab-import"   class="nav-tab"><?php esc_html_e( 'Import / Export', 'wp-glossary-tooltip' ); ?></a>
+                    <a href="#wpgt-tab-sort"     class="nav-tab"><?php esc_html_e( 'Sort Terms',     'wp-glossary-tooltip' ); ?></a>
                 </h2>
 
                 <!-- GENERAL TAB -->
@@ -444,6 +520,7 @@ class WPGT_Admin {
 
                 <!-- IMPORT / EXPORT TAB — outside the settings form to avoid nesting -->
                 <div id="wpgt-tab-import" class="wpgt-tab-content" style="display:none;">
+
                     <h3><?php esc_html_e( 'Export Glossary', 'wp-glossary-tooltip' ); ?></h3>
                     <p><?php esc_html_e( 'Download all glossary terms as an Excel (.xlsx) file. Edit in Excel or Google Sheets, then re-import.', 'wp-glossary-tooltip' ); ?></p>
                     <a href="<?php echo esc_url( admin_url( 'admin-post.php?action=wpgt_export&_wpnonce=' . wp_create_nonce('wpgt_export') ) ); ?>"
@@ -470,6 +547,163 @@ class WPGT_Admin {
                         <p><?php printf( esc_html__( 'Import complete: %d terms created, %d updated.', 'wp-glossary-tooltip' ),
                             (int) ($_GET['created'] ?? 0), (int) ($_GET['updated'] ?? 0) ); ?></p>
                     </div>
+                    <?php endif; ?>
+
+                    <hr style="margin:2em 0;">
+
+                    <h3><?php esc_html_e( 'Letter Taxonomy', 'wp-glossary-tooltip' ); ?></h3>
+                    <p><?php esc_html_e( 'Assigns every glossary term to its first-letter taxonomy term (ა, ბ, გ…). Run this once after importing terms, or whenever you add new terms starting with a new letter. Each letter gets its own archive URL at /glossary/letter/letter-a/ which Elementor sees as a taxonomy archive — build one template and apply it to all letter archives.', 'wp-glossary-tooltip' ); ?></p>
+                    <?php
+                    $letter_terms = get_terms( [ 'taxonomy' => WPGT_Post_Type::LETTER_TAX, 'hide_empty' => false ] );
+                    $letter_list  = ! is_wp_error( $letter_terms ) && ! empty( $letter_terms )
+                        ? implode( ', ', array_map( fn($t) => $t->name . ' <small>(' . $t->count . ')</small>', $letter_terms ) )
+                        : '<em>' . esc_html__( 'None yet', 'wp-glossary-tooltip' ) . '</em>';
+                    ?>
+                    <p><?php esc_html_e( 'Current letters:', 'wp-glossary-tooltip' ); ?> <?php echo $letter_list; ?></p>
+                    <form method="post" action="<?php echo esc_url( admin_url('admin-post.php') ); ?>">
+                        <?php wp_nonce_field( 'wpgt_sync_letters', 'wpgt_sync_letters_nonce' ); ?>
+                        <input type="hidden" name="action" value="wpgt_sync_letters">
+                        <input type="submit" class="button button-secondary"
+                               value="⟳ <?php esc_attr_e( 'Sync Letter Taxonomy', 'wp-glossary-tooltip' ); ?>">
+                    </form>
+                    <?php if ( isset( $_GET['wpgt_synced'] ) ) : ?>
+                    <div class="notice notice-success inline" style="margin-top:1em;">
+                        <p><?php printf(
+                            esc_html__( 'Done — %d terms synced, %d letter slug(s) repaired.', 'wp-glossary-tooltip' ),
+                            (int) $_GET['wpgt_synced'],
+                            (int) ( $_GET['wpgt_fixed'] ?? 0 )
+                        ); ?></p>
+                        <p><?php esc_html_e( 'If letter archive pages still 404, go to Settings → Permalinks and click Save.', 'wp-glossary-tooltip' ); ?></p>
+                    </div>
+                    <?php endif; ?>
+
+                    <hr style="margin:2em 0;">
+
+                    <h3><?php esc_html_e( 'Declined Forms', 'wp-glossary-tooltip' ); ?></h3>
+                    <p><?php esc_html_e( 'For each glossary term, the plugin auto-generates all declined forms (სტრესი, სტრესს, სტრესმა, სტრესისგან…) and stores them invisibly. The tooltip highlighter matches these exact forms — no guesswork, no false positives.', 'wp-glossary-tooltip' ); ?></p>
+                    <p><?php esc_html_e( 'Forms are regenerated automatically each time you save a term. Click below to regenerate all terms at once (useful after bulk import).', 'wp-glossary-tooltip' ); ?></p>
+                    <form method="post" action="<?php echo esc_url( admin_url('admin-post.php') ); ?>">
+                        <?php wp_nonce_field( 'wpgt_regen_forms', 'wpgt_regen_nonce' ); ?>
+                        <input type="hidden" name="action" value="wpgt_regen_forms">
+                        <input type="submit" class="button button-secondary"
+                               value="⟳ <?php esc_attr_e( 'Regenerate All Declined Forms', 'wp-glossary-tooltip' ); ?>">
+                    </form>
+                    <?php if ( isset( $_GET['wpgt_regenok'] ) ) : ?>
+                    <div class="notice notice-success inline" style="margin-top:1em;">
+                        <p><?php printf(
+                            esc_html__( 'Done — declined forms regenerated for %d terms.', 'wp-glossary-tooltip' ),
+                            (int) $_GET['wpgt_regenok']
+                        ); ?></p>
+                    </div>
+                    <?php endif; ?>
+
+                </div>
+
+                <!-- SORT TERMS TAB — outside the settings form -->
+                <div id="wpgt-tab-sort" class="wpgt-tab-content" style="display:none;">
+                    <?php
+                    $letter_terms = get_terms( [
+                        'taxonomy'   => WPGT_Post_Type::LETTER_TAX,
+                        'hide_empty' => true,
+                        'orderby'    => 'name',
+                        'order'      => 'ASC',
+                    ] );
+
+                    $selected_slug = isset( $_GET['wpgt_letter'] ) ? sanitize_text_field( $_GET['wpgt_letter'] ) : '';
+                    $selected_term = null;
+
+                    if ( $selected_slug && ! is_wp_error( $letter_terms ) ) {
+                        foreach ( $letter_terms as $lt ) {
+                            if ( $lt->slug === $selected_slug ) { $selected_term = $lt; break; }
+                        }
+                    }
+                    if ( ! $selected_term && ! is_wp_error( $letter_terms ) && ! empty( $letter_terms ) ) {
+                        $selected_term = $letter_terms[0];
+                        $selected_slug = $selected_term->slug;
+                    }
+
+                    $query_args = [
+                        'post_type'      => WPGT_Post_Type::POST_TYPE,
+                        'post_status'    => 'publish',
+                        'posts_per_page' => -1,
+                        'orderby'        => 'menu_order',
+                        'order'          => 'ASC',
+                    ];
+                    if ( $selected_term ) {
+                        $query_args['tax_query'] = [ [
+                            'taxonomy' => WPGT_Post_Type::LETTER_TAX,
+                            'field'    => 'term_id',
+                            'terms'    => $selected_term->term_id,
+                        ] ];
+                    }
+                    $sort_posts = get_posts( $query_args );
+                    ?>
+
+                    <p class="description"><?php esc_html_e( 'Drag and drop to set the display order within each letter. Saves automatically.', 'wp-glossary-tooltip' ); ?></p>
+
+                    <?php if ( ! is_wp_error( $letter_terms ) && ! empty( $letter_terms ) ) : ?>
+                    <div style="margin:14px 0; display:flex; flex-wrap:wrap; gap:6px;">
+                        <?php foreach ( $letter_terms as $lt ) :
+                            $url = add_query_arg( [
+                                'post_type'   => WPGT_Post_Type::POST_TYPE,
+                                'page'        => 'wpgt-settings',
+                                'wpgt_letter' => $lt->slug,
+                                '#'           => 'wpgt-tab-sort',
+                            ], admin_url( 'edit.php' ) );
+                            $active = ( $lt->slug === $selected_slug );
+                        ?>
+                        <a href="<?php echo esc_url( $url ); ?>#wpgt-tab-sort"
+                           style="display:inline-block; padding:5px 13px; border-radius:4px;
+                                  text-decoration:none; font-size:1.1rem; font-weight:700;
+                                  background:<?php echo $active ? '#2563eb' : '#f0f0f0'; ?>;
+                                  color:<?php echo $active ? '#fff' : '#333'; ?>;">
+                            <?php echo esc_html( $lt->name ); ?>
+                        </a>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if ( empty( $sort_posts ) ) : ?>
+                        <p><?php esc_html_e( 'No terms found.', 'wp-glossary-tooltip' ); ?></p>
+                    <?php else : ?>
+                    <ul id="wpgt-sortable" style="list-style:none; margin:0; padding:0; max-width:680px;">
+                        <?php foreach ( $sort_posts as $sp ) : ?>
+                        <li data-id="<?php echo (int) $sp->ID; ?>"
+                            style="display:flex; align-items:center; gap:12px; background:#fff;
+                                   border:1px solid #ddd; border-radius:6px; padding:11px 15px;
+                                   margin-bottom:7px; cursor:grab; user-select:none;">
+                            <span style="color:#bbb; font-size:18px; flex-shrink:0;">&#9776;</span>
+                            <span style="font-weight:600;"><?php echo esc_html( $sp->post_title ); ?></span>
+                            <?php
+                            $ex = $sp->post_excerpt ?: wp_trim_words( strip_tags( $sp->post_content ), 10 );
+                            if ( $ex ) echo '<span style="color:#888;font-size:0.82rem;">' . esc_html( $ex ) . '</span>';
+                            ?>
+                        </li>
+                        <?php endforeach; ?>
+                    </ul>
+                    <p id="wpgt-order-saved" style="display:none; color:#2563eb; margin-top:10px; font-weight:600;">
+                        ✓ <?php esc_html_e( 'Order saved!', 'wp-glossary-tooltip' ); ?>
+                    </p>
+                    <script>
+                    jQuery(function($){
+                        $('#wpgt-sortable').sortable({
+                            placeholder: 'wpgt-sort-ph',
+                            update: function(){
+                                var ids = [];
+                                $('#wpgt-sortable li').each(function(){ ids.push($(this).data('id')); });
+                                $.post(ajaxurl,{
+                                    action:'wpgt_save_order', order:ids,
+                                    _wpnonce:'<?php echo wp_create_nonce("wpgt_save_order"); ?>'
+                                }, function(r){ if(r.success){$('#wpgt-order-saved').fadeIn().delay(2000).fadeOut();} });
+                            }
+                        });
+                    });
+                    </script>
+                    <style>
+                    .wpgt-sort-ph{background:#e8f0fe;border:2px dashed #2563eb;border-radius:6px;height:48px;margin-bottom:7px;list-style:none;}
+                    #wpgt-sortable li:active{cursor:grabbing;}
+                    #wpgt-tab-sort{padding-bottom:80px;}
+                    </style>
                     <?php endif; ?>
                 </div>
 
@@ -825,4 +1059,228 @@ class WPGT_Admin {
 
         return $rows;
     }
+    // ------------------------------------------------------------------
+    // Sync letter taxonomy
+    // ------------------------------------------------------------------
+    public static function sync_letter_taxonomy() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
+        check_admin_referer( 'wpgt_sync_letters', 'wpgt_sync_letters_nonce' );
+
+        // Step 1: fix any bad slugs (letter-ს, %e1%83%90, etc.) → letter-a, letter-b
+        $fixed = WPGT_Post_Type::fix_letter_slugs();
+
+        // Step 2: assign every published term to its letter
+        $posts = get_posts( [
+            'post_type'      => WPGT_Post_Type::POST_TYPE,
+            'post_status'    => 'publish',
+            'posts_per_page' => -1,
+            'fields'         => 'ids',
+        ] );
+
+        foreach ( $posts as $post_id ) {
+            WPGT_Post_Type::assign_letter_taxonomy( $post_id );
+        }
+
+        // Step 3: flush so new /glossary/letter/letter-a/ URLs resolve immediately
+        flush_rewrite_rules( false );
+
+        wp_redirect( add_query_arg( [
+            'wpgt_synced' => count( $posts ),
+            'wpgt_fixed'  => $fixed,
+        ], wp_get_referer() ) );
+        exit;
+    }
+    // ------------------------------------------------------------------
+    // Re-Order page
+    // ------------------------------------------------------------------
+    public static function render_reorder_page() {
+        if ( ! current_user_can( 'manage_options' ) ) return;
+
+        // Get all letters that have terms
+        $letter_terms = get_terms( [
+            'taxonomy'   => WPGT_Post_Type::LETTER_TAX,
+            'hide_empty' => true,
+            'orderby'    => 'name',
+            'order'      => 'ASC',
+        ] );
+
+        // Default: show first letter's terms, or all if no letters
+        $selected_slug = isset( $_GET['letter'] ) ? sanitize_text_field( $_GET['letter'] ) : '';
+        $selected_term = null;
+
+        if ( $selected_slug && ! is_wp_error( $letter_terms ) ) {
+            foreach ( $letter_terms as $lt ) {
+                if ( $lt->slug === $selected_slug ) { $selected_term = $lt; break; }
+            }
+        }
+
+        if ( ! $selected_term && ! is_wp_error( $letter_terms ) && ! empty( $letter_terms ) ) {
+            $selected_term = $letter_terms[0];
+            $selected_slug = $selected_term->slug;
+        }
+
+        // Fetch posts for selected letter
+        $query_args = [
+            'post_type'      => WPGT_Post_Type::POST_TYPE,
+            'post_status'    => 'publish',
+            'posts_per_page' => -1,
+            'orderby'        => 'menu_order',
+            'order'          => 'ASC',
+        ];
+        if ( $selected_term ) {
+            $query_args['tax_query'] = [ [
+                'taxonomy' => WPGT_Post_Type::LETTER_TAX,
+                'field'    => 'term_id',
+                'terms'    => $selected_term->term_id,
+            ] ];
+        }
+        $posts = get_posts( $query_args );
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e( 'Re-Order Glossary Terms', 'wp-glossary-tooltip' ); ?></h1>
+            <p class="description"><?php esc_html_e( 'Drag and drop terms to set the display order. Changes save automatically.', 'wp-glossary-tooltip' ); ?></p>
+
+            <!-- Letter filter tabs -->
+            <?php if ( ! is_wp_error( $letter_terms ) && ! empty( $letter_terms ) ) : ?>
+            <div style="margin: 16px 0; display:flex; flex-wrap:wrap; gap:6px;">
+                <?php foreach ( $letter_terms as $lt ) :
+                    $url = add_query_arg( [
+                        'post_type' => WPGT_Post_Type::POST_TYPE,
+                        'page'      => 'wpgt-settings',
+                        'letter'    => $lt->slug,
+                    ], admin_url( 'edit.php' ) );
+                    $active = $lt->slug === $selected_slug;
+                ?>
+                <a href="<?php echo esc_url( $url ); ?>"
+                   style="display:inline-block; padding:6px 14px; border-radius:4px; text-decoration:none;
+                          font-size:1.1rem; font-weight:600;
+                          background:<?php echo $active ? '#2563eb' : '#f0f0f0'; ?>;
+                          color:<?php echo $active ? '#fff' : '#333'; ?>;">
+                    <?php echo esc_html( $lt->name ); ?>
+                </a>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+            <!-- Sortable list -->
+            <div id="wpgt-reorder-wrap" style="max-width:700px;">
+                <?php if ( empty( $posts ) ) : ?>
+                <p><?php esc_html_e( 'No terms found for this letter.', 'wp-glossary-tooltip' ); ?></p>
+                <?php else : ?>
+                <ul id="wpgt-sortable" style="list-style:none; margin:0; padding:0;">
+                    <?php foreach ( $posts as $post ) : ?>
+                    <li data-id="<?php echo (int) $post->ID; ?>"
+                        style="display:flex; align-items:center; gap:12px;
+                               background:#fff; border:1px solid #ddd; border-radius:6px;
+                               padding:12px 16px; margin-bottom:8px; cursor:grab;
+                               user-select:none;">
+                        <span style="color:#aaa; font-size:18px;">&#9776;</span>
+                        <span style="font-weight:600;"><?php echo esc_html( $post->post_title ); ?></span>
+                        <?php
+                        $excerpt = $post->post_excerpt ?: wp_trim_words( strip_tags( $post->post_content ), 10 );
+                        if ( $excerpt ) :
+                        ?>
+                        <span style="color:#888; font-size:0.85rem;"><?php echo esc_html( $excerpt ); ?></span>
+                        <?php endif; ?>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+                <p id="wpgt-order-saved" style="display:none; color:#2563eb; margin-top:10px; font-weight:600;">
+                    ✓ <?php esc_html_e( 'Order saved!', 'wp-glossary-tooltip' ); ?>
+                </p>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <script>
+        jQuery(function($){
+            $('#wpgt-sortable').sortable({
+                handle: 'li',
+                placeholder: 'wpgt-sort-placeholder',
+                update: function() {
+                    var ids = [];
+                    $('#wpgt-sortable li').each(function(){
+                        ids.push( $(this).data('id') );
+                    });
+                    $.post( ajaxurl, {
+                        action:   'wpgt_save_order',
+                        order:    ids,
+                        _wpnonce: '<?php echo wp_create_nonce("wpgt_save_order"); ?>'
+                    }, function(response){
+                        if ( response.success ) {
+                            $('#wpgt-order-saved').fadeIn().delay(2000).fadeOut();
+                        }
+                    });
+                }
+            });
+        });
+        </script>
+        <style>
+        .wpgt-sort-placeholder {
+            background: #e8f0fe; border: 2px dashed #2563eb;
+            border-radius: 6px; height: 50px; margin-bottom: 8px;
+            list-style: none;
+        }
+        #wpgt-sortable li:active { cursor: grabbing; }
+        </style>
+        <?php
+    }
+
+    public static function ajax_save_order() {
+        check_ajax_referer( 'wpgt_save_order' );
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error();
+
+        $order = array_map( 'intval', (array) ( $_POST['order'] ?? [] ) );
+        foreach ( $order as $position => $post_id ) {
+            wp_update_post( [ 'ID' => $post_id, 'menu_order' => $position ] );
+        }
+
+        wp_send_json_success();
+    }
+
+    // ------------------------------------------------------------------
+    // Skip tooltips meta box (on posts/pages)
+    // ------------------------------------------------------------------
+    public static function render_skip_meta_box( WP_Post $post ) {
+        wp_nonce_field( 'wpgt_skip_tooltips', 'wpgt_skip_nonce' );
+        $skip = get_post_meta( $post->ID, '_wpgt_skip_tooltips', true );
+        ?>
+        <label style="display:flex; align-items:flex-start; gap:8px; margin-top:4px;">
+            <input type="checkbox" name="wpgt_skip_tooltips" value="1"
+                   <?php checked( $skip, '1' ); ?> style="margin-top:2px;" />
+            <span><?php esc_html_e( 'Disable glossary tooltips on this post', 'wp-glossary-tooltip' ); ?></span>
+        </label>
+        <?php
+    }
+
+    public static function save_skip_meta( int $post_id ) {
+        if ( ! isset( $_POST['wpgt_skip_nonce'] ) ) return;
+        if ( ! wp_verify_nonce( $_POST['wpgt_skip_nonce'], 'wpgt_skip_tooltips' ) ) return;
+        if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) return;
+        if ( ! current_user_can( 'edit_post', $post_id ) ) return;
+        if ( get_post_type( $post_id ) === WPGT_Post_Type::POST_TYPE ) return;
+
+        if ( ! empty( $_POST['wpgt_skip_tooltips'] ) ) {
+            update_post_meta( $post_id, '_wpgt_skip_tooltips', '1' );
+        } else {
+            delete_post_meta( $post_id, '_wpgt_skip_tooltips' );
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Regenerate all declined forms
+    // ------------------------------------------------------------------
+    public static function regen_declined_forms() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
+        check_admin_referer( 'wpgt_regen_forms', 'wpgt_regen_nonce' );
+
+        $count = WPGT_Post_Type::regenerate_all_declined_forms();
+
+        wp_redirect( add_query_arg( [
+            'page'         => 'wpgt-settings',
+            'wpgt_regenok' => $count,
+        ], admin_url( 'edit.php?post_type=' . WPGT_Post_Type::POST_TYPE ) ) );
+        exit;
+    }
+
 }
