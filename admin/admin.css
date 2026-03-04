@@ -1,5 +1,5 @@
 /* WP Glossary Tooltip – Admin Styles */
-.wpgt-settings-wrap { max-width: 900px; }
+.wpgt-settings-wrap { max-width: 1200px; }
 .wpgt-settings-wrap h1 { margin-bottom: 20px; }
 
 .wpgt-tabs { margin-bottom: 0; border-bottom: 1px solid #c3c4c7; }
@@ -15,6 +15,15 @@
 .wpgt-tab-content .form-table th {
     width: 240px;
     padding: 16px 10px 16px 0;
+}
+
+/* Styles tab has its own tighter table layout — override the above */
+#wpgt-tab-styles .wpgt-style-table th {
+    width: 190px;
+    padding: 6px 10px 6px 0;
+}
+#wpgt-tab-styles .wpgt-style-table td {
+    padding: 5px 10px 5px 0;
 }
 
 .wpgt-shortcode-help {

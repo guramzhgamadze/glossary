@@ -360,6 +360,7 @@ class WPGT_Admin {
                             </td>
                         </tr>
                     </table>
+                    <?php submit_button( __( 'Save Settings', 'wp-glossary-tooltip' ) ); ?>
                 </div>
 
                 <!-- TOOLTIP TAB -->
@@ -442,6 +443,7 @@ class WPGT_Admin {
                     </table>
 
 
+                    <?php submit_button( __( 'Save Settings', 'wp-glossary-tooltip' ) ); ?>
                 </div>
 
                 <!-- INDEX PAGE TAB -->
@@ -489,6 +491,7 @@ class WPGT_Admin {
                             <dd><?php esc_html_e( 'Live AJAX search widget. Accepts: placeholder.', 'wp-glossary-tooltip' ); ?></dd>
                         </dl>
                     </div>
+                    <?php submit_button( __( 'Save Settings', 'wp-glossary-tooltip' ) ); ?>
                 </div>
 
                 <!-- ADVANCED TAB -->
@@ -515,9 +518,9 @@ class WPGT_Admin {
                             </td>
                         </tr>
                     </table>
+                    <?php submit_button( __( 'Save Settings', 'wp-glossary-tooltip' ) ); ?>
                 </div>
 
-                <?php submit_button( __( 'Save Settings', 'wp-glossary-tooltip' ) ); ?>
             </form>
 
                 <!-- IMPORT / EXPORT TAB — outside the settings form to avoid nesting -->
@@ -736,216 +739,736 @@ class WPGT_Admin {
             <?php wp_nonce_field( 'wpgt_styles_save', 'wpgt_styles_nonce' ); ?>
             <input type="hidden" name="action" value="wpgt_save_styles" />
 
-            <!-- Live preview -->
-            <div style="display:flex;gap:28px;align-items:flex-start;margin-bottom:28px;flex-wrap:wrap;">
-                <div style="flex:1;min-width:260px;max-width:420px;">
-                    <h3 style="margin-top:0;"><?php esc_html_e( 'Live Preview', 'wp-glossary-tooltip' ); ?></h3>
-                    <p style="font-size:0.85rem;color:#666;margin-top:-8px;"><?php esc_html_e( 'Updates as you edit fields below.', 'wp-glossary-tooltip' ); ?></p>
+            <div class="wpgt-styles-layout">
 
-                    <p style="margin:0 0 6px;font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#888;">Tooltip bubble</p>
-                    <div id="wpgt-pv-tip" style="display:inline-block;padding:12px 14px;border-radius:6px;max-width:300px;margin-bottom:16px;box-shadow:0 4px 16px rgba(0,0,0,.2);background:#1e293b;color:#f1f5f9;">
-                        <strong id="wpgt-pv-title" style="display:block;margin-bottom:5px;font-size:0.9375rem;color:#fff;">Sample Term</strong>
-                        <span id="wpgt-pv-text" style="display:block;font-size:0.875rem;margin-bottom:6px;">Short tooltip definition text.</span>
-                        <a id="wpgt-pv-more" href="#" style="font-size:0.8125rem;font-weight:500;color:#93c5fd;" onclick="return false;">Read more →</a>
-                    </div>
+                <!-- ════ LEFT: form fields ════ -->
+                <div class="wpgt-styles-fields">
+                <?php
 
-                    <p style="margin:8px 0 4px;font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#888;">Trigger word</p>
-                    <span id="wpgt-pv-trigger" style="border-bottom:1.5px dashed #2563eb;cursor:help;font-size:1rem;">glossary term</span>
+                // ─────────────────────────────────────────────────────────────
+                // Field / card rendering helpers
+                // Color pickers: class "wpgt-style-picker" (NOT "wpgt-color-picker")
+                // so admin.js never double-initialises them.
+                // ─────────────────────────────────────────────────────────────
 
-                    <p style="margin:16px 0 4px;font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#888;">[wpgt_term] box</p>
-                    <div id="wpgt-pv-box" style="border-left:4px solid #2563eb;padding:12px 16px;border-radius:0 6px 6px 0;background:#f8fafc;">
-                        <h4 style="margin:0 0 5px;font-size:1rem;"><a id="wpgt-pv-box-title" href="#" style="color:#2563eb;text-decoration:none;" onclick="return false;">Term Title</a></h4>
-                        <p id="wpgt-pv-box-def" style="margin:0;font-size:0.9rem;color:#374151;">Definition text shown in the term box shortcode.</p>
-                    </div>
-                </div>
-            </div>
-
-            <?php
-            // ── field renderer ──────────────────────────────────────────
-            // NOTE: color pickers use class "wpgt-style-picker" (not "wpgt-color-picker")
-            // so admin.js does NOT double-initialize them.
-            $row = function( string $label, string $name, string $value, string $type = 'color', string $extra = '', string $unit = '' ) {
-                $id = 'wpgt_s_' . $name;
-                echo '<tr>';
-                echo '<th scope="row"><label for="' . esc_attr($id) . '">' . esc_html($label) . '</label></th>';
-                echo '<td>';
-                if ( $type === 'color' ) {
-                    echo '<input type="text" id="' . esc_attr($id) . '" '
-                        . 'name="wpgt_styles[' . esc_attr($name) . ']" '
-                        . 'value="' . esc_attr($value) . '" '
-                        . 'class="wpgt-style-picker" '
-                        . 'data-key="' . esc_attr($name) . '" />';
-                } elseif ( $type === 'number' ) {
-                    echo '<input type="number" id="' . esc_attr($id) . '" '
-                        . 'name="wpgt_styles[' . esc_attr($name) . ']" '
-                        . 'value="' . esc_attr($value) . '" '
-                        . 'min="0" max="999" style="width:76px;" '
-                        . 'data-key="' . esc_attr($name) . '" /> ' . esc_html($unit);
-                } elseif ( $type === 'select' ) {
-                    $opts = json_decode( $extra, true );
-                    echo '<select id="' . esc_attr($id) . '" '
-                        . 'name="wpgt_styles[' . esc_attr($name) . ']" '
-                        . 'data-key="' . esc_attr($name) . '">';
-                    foreach ( $opts as $v => $l ) {
-                        echo '<option value="' . esc_attr($v) . '"' . selected($value, $v, false) . '>' . esc_html($l) . '</option>';
+                // Renders ONE field cell inside the grid
+                $field = function( string $label, string $name, string $value, string $type = 'color', array $opts = [], string $unit = '', bool $full = false ) {
+                    $id   = 'wpgt_s_' . $name;
+                    $attr = 'id="' . esc_attr($id) . '" name="wpgt_styles[' . esc_attr($name) . ']" data-key="' . esc_attr($name) . '"';
+                    $cls  = $full ? ' wpgt-field--full' : '';
+                    echo '<div class="wpgt-field' . $cls . '">';
+                    echo '<label for="' . esc_attr($id) . '">' . esc_html($label) . '</label>';
+                    switch ( $type ) {
+                        case 'color':
+                            echo '<div class="wpgt-field-color-wrap"><input type="text" ' . $attr . ' value="' . esc_attr($value) . '" class="wpgt-style-picker" /></div>';
+                            break;
+                        case 'number':
+                            echo '<div class="wpgt-field-num-wrap"><input type="number" ' . $attr . ' value="' . esc_attr($value) . '" min="0" max="999" /><span>' . esc_html($unit) . '</span></div>';
+                            break;
+                        case 'float':
+                            echo '<input type="number" step="0.01" min="0" max="10" ' . $attr . ' value="' . esc_attr($value) . '" />';
+                            break;
+                        case 'select':
+                            echo '<select ' . $attr . '>';
+                            foreach ( $opts as $v => $l ) {
+                                echo '<option value="' . esc_attr($v) . '"' . selected($value, $v, false) . '>' . esc_html($l) . '</option>';
+                            }
+                            echo '</select>';
+                            break;
                     }
-                    echo '</select>';
-                    $extra = '';
-                }
-                if ( $extra && $type !== 'select' ) echo '<p class="description">' . esc_html($extra) . '</p>';
-                echo '</td></tr>';
-            };
-            ?>
+                    echo '</div>';
+                };
 
-            <h3 class="wpgt-style-section-heading">🔤 <?php esc_html_e( 'Trigger Words', 'wp-glossary-tooltip' ); ?></h3>
-            <p class="description"><?php esc_html_e( 'Underlined words in post content that open the tooltip.', 'wp-glossary-tooltip' ); ?></p>
-            <table class="form-table wpgt-style-table">
-                <?php
-                $row( 'Underline Color',     'trigger_underline_color', $s['trigger_underline_color'], 'color' );
-                $row( 'Underline Style',     'trigger_underline_style', $s['trigger_underline_style'], 'select', json_encode(['dashed'=>'Dashed','solid'=>'Solid','dotted'=>'Dotted','none'=>'None']) );
-                $row( 'Hover / Focus Color', 'trigger_hover_color',     $s['trigger_hover_color'],     'color' );
-                $row( 'Font Weight',         'trigger_font_weight',     $s['trigger_font_weight'],     'select', json_encode(['400'=>'Normal (400)','500'=>'Medium (500)','600'=>'Semi-bold (600)','700'=>'Bold (700)']) );
-                ?>
-            </table>
+                // Card helpers
+                $card_open  = function( string $icon, string $title, string $css_class ) {
+                    echo '<div class="wpgt-card">';
+                    echo '<div class="wpgt-card-head">'
+                        . '<span class="wpgt-card-icon">' . $icon . '</span>'
+                        . '<span>' . esc_html($title) . '</span>'
+                        . '<code class="wpgt-css-badge">' . esc_html($css_class) . '</code>'
+                        . '</div><div class="wpgt-card-body">';
+                };
+                $card_close = function() { echo '</div></div>'; };  // close body + card
 
-            <h3 class="wpgt-style-section-heading">💬 <?php esc_html_e( 'Tooltip Bubble', 'wp-glossary-tooltip' ); ?></h3>
-            <p class="description"><?php esc_html_e( 'The popup card. Background color is controlled by the Tooltip tab (Theme / Brand Color).', 'wp-glossary-tooltip' ); ?></p>
-            <table class="form-table wpgt-style-table">
-                <?php
-                $row( 'Text Color',         'tooltip_text_color',    $s['tooltip_text_color'],    'color',  'Leave blank to use the theme default.' );
-                $row( 'Title Color',        'tooltip_title_color',   $s['tooltip_title_color'],   'color',  'Leave blank to use the theme default.' );
-                $row( '"Read More" Color',  'tooltip_link_color',    $s['tooltip_link_color'],    'color',  'Leave blank to use the theme default.' );
-                $row( 'Font Size',          'tooltip_font_size',     $s['tooltip_font_size'],     'number', '', 'px' );
-                $row( 'Border Radius',      'tooltip_border_radius', $s['tooltip_border_radius'], 'number', '', 'px' );
-                $row( 'Max Width',          'tooltip_max_width',     $s['tooltip_max_width'],     'number', 'Set 0 for auto (up to 500 px).', 'px' );
-                ?>
-            </table>
+                // Group label (sub-section inside a card)
+                $group = function( string $label, string $css_class = '' ) {
+                    echo '<div class="wpgt-group-label">' . esc_html($label);
+                    if ( $css_class ) echo ' <code class="wpgt-css-badge wpgt-css-badge--sm">' . esc_html($css_class) . '</code>';
+                    echo '</div>';
+                };
 
-            <h3 class="wpgt-style-section-heading">📋 <?php esc_html_e( '[wpgt_glossary] — Glossary Index', 'wp-glossary-tooltip' ); ?></h3>
-            <table class="form-table wpgt-style-table">
-                <tr><td colspan="2" style="padding:4px 0 2px;"><strong style="font-size:0.8rem;text-transform:uppercase;letter-spacing:.05em;color:#555;">A–Z Navigation Bar</strong></td></tr>
-                <?php
-                $row( 'Bar Background',       'az_bar_bg',           $s['az_bar_bg'],           'color' );
-                $row( 'Letter Color',         'az_link_color',       $s['az_link_color'],       'color' );
-                $row( 'Letter Hover BG',      'az_link_hover_bg',    $s['az_link_hover_bg'],    'color' );
-                $row( 'Letter Hover Color',   'az_link_hover_color', $s['az_link_hover_color'], 'color' );
-                $row( 'Letter Border Radius', 'az_link_radius',      $s['az_link_radius'],      'number', '', 'px' );
-                ?>
-                <tr><td colspan="2" style="padding:8px 0 2px;"><strong style="font-size:0.8rem;text-transform:uppercase;letter-spacing:.05em;color:#555;">Letter Headings (A, B, C…)</strong></td></tr>
-                <?php
-                $row( 'Heading Color',        'letter_heading_color',  $s['letter_heading_color'],  'color' );
-                $row( 'Heading Border Color', 'letter_heading_border', $s['letter_heading_border'], 'color' );
-                $row( 'Heading Font Size',    'letter_heading_size',   $s['letter_heading_size'],   'number', '', 'px' );
-                ?>
-                <tr><td colspan="2" style="padding:8px 0 2px;"><strong style="font-size:0.8rem;text-transform:uppercase;letter-spacing:.05em;color:#555;">Term Cards</strong></td></tr>
-                <?php
-                $row( 'Card Background',      'term_card_bg',           $s['term_card_bg'],           'color' );
-                $row( 'Card Border Color',    'term_card_border',       $s['term_card_border'],       'color' );
-                $row( 'Card Border Radius',   'term_card_radius',       $s['term_card_radius'],       'number', '', 'px' );
-                $row( 'Card Hover Border',    'term_card_hover_border', $s['term_card_hover_border'], 'color' );
-                $row( 'Term Name Color',      'term_link_color',        $s['term_link_color'],        'color' );
-                $row( 'Term Name Size',       'term_link_size',         $s['term_link_size'],         'number', '', 'px' );
-                $row( 'Excerpt Text Color',   'term_excerpt_color',     $s['term_excerpt_color'],     'color' );
-                ?>
-            </table>
+                // Opens/closes the 2-col grid
+                $grid_open  = function() { echo '<div class="wpgt-field-grid">'; };
+                $grid_close = function() { echo '</div>'; };
 
-            <h3 class="wpgt-style-section-heading">📦 <?php esc_html_e( '[wpgt_term] — Single Term Box', 'wp-glossary-tooltip' ); ?></h3>
-            <table class="form-table wpgt-style-table">
-                <?php
-                $row( 'Left Border Color',     'termbox_border_color', $s['termbox_border_color'], 'color' );
-                $row( 'Left Border Width',     'termbox_border_width', $s['termbox_border_width'], 'number', '', 'px' );
-                $row( 'Background',            'termbox_bg',           $s['termbox_bg'],           'color' );
-                $row( 'Title Color',           'termbox_title_color',  $s['termbox_title_color'],  'color' );
-                $row( 'Title Font Size',       'termbox_title_size',   $s['termbox_title_size'],   'number', '', 'px' );
-                $row( 'Definition Text Color', 'termbox_text_color',   $s['termbox_text_color'],   'color' );
-                $row( 'Border Radius',         'termbox_radius',       $s['termbox_radius'],       'number', '', 'px' );
+                $weights    = ['400'=>'Normal','500'=>'Medium','600'=>'Semi-bold','700'=>'Bold'];
+                $transforms = [''=>'None','uppercase'=>'UPPER','lowercase'=>'lower','capitalize'=>'Title'];
+                $tip_shad   = ['none'=>'None','sm'=>'Subtle','default'=>'Default','lg'=>'Strong'];
+                $card_shad  = ['none'=>'None','sm'=>'Subtle','md'=>'Medium','lg'=>'Strong'];
+                $sr_shad    = ['none'=>'None','sm'=>'Subtle','default'=>'Default','lg'=>'Strong'];
+                $aligns     = ['left'=>'Left','center'=>'Center','right'=>'Right'];
+                $justifys   = ['flex-start'=>'Left','center'=>'Center','flex-end'=>'Right','space-between'=>'Spread'];
+                $bstyles    = ['solid'=>'Solid','dashed'=>'Dashed','dotted'=>'Dotted','none'=>'None'];
                 ?>
-            </table>
 
-            <h3 class="wpgt-style-section-heading">🔍 <?php esc_html_e( '[wpgt_search] — Search Widget', 'wp-glossary-tooltip' ); ?></h3>
-            <table class="form-table wpgt-style-table">
-                <?php
-                $row( 'Input Border Color',   'search_input_border',    $s['search_input_border'],    'color' );
-                $row( 'Input Focus Color',    'search_input_focus',     $s['search_input_focus'],     'color' );
-                $row( 'Input Border Radius',  'search_input_radius',    $s['search_input_radius'],    'number', '', 'px' );
-                $row( 'Input Font Size',      'search_input_size',      $s['search_input_size'],      'number', '', 'px' );
-                $row( 'Results Background',   'search_results_bg',      $s['search_results_bg'],      'color' );
-                $row( 'Result Hover BG',      'search_result_hover_bg', $s['search_result_hover_bg'], 'color' );
-                $row( 'Result Title Color',   'search_result_title',    $s['search_result_title'],    'color' );
-                $row( 'Result Excerpt Color', 'search_result_excerpt',  $s['search_result_excerpt'],  'color' );
+                <?php // ══════════════════════════════════════════════════════
+                // CARD 1: Trigger Word
+                $card_open('🔤', 'Trigger Word', '.wpgt-tooltip-trigger');
+
+                $group('Colors');
+                $grid_open();
+                    $field('Underline Color', 'trigger_color',       $s['trigger_color'],       'color');
+                    $field('Hover Color',     'trigger_hover_color', $s['trigger_hover_color'], 'color');
+                $grid_close();
+
+                $group('Underline');
+                $grid_open();
+                    $field('Style', 'trigger_underline_style', $s['trigger_underline_style'], 'select', ['dashed'=>'Dashed','solid'=>'Solid','dotted'=>'Dotted','none'=>'None']);
+                    $field('Width', 'trigger_underline_width', $s['trigger_underline_width'], 'number', [], 'px');
+                $grid_close();
+
+                $group('Typography');
+                $grid_open();
+                    $field('Font Weight',    'trigger_font_weight',    $s['trigger_font_weight'],    'select', $weights);
+                    $field('Font Size',      'trigger_font_size',      $s['trigger_font_size'],      'number', [], 'px');
+                    $field('Text Transform', 'trigger_text_transform', $s['trigger_text_transform'], 'select', $transforms, '', true);
+                $grid_close();
+
+                $card_close();
+
+                // ══════════════════════════════════════════════════════
+                // CARD 2: Tooltip Bubble
+                $card_open('💬', 'Tooltip Bubble', '.wpgt-tooltip-bubble');
+
+                $group('Colors');
+                $grid_open();
+                    $field('Background',   'tooltip_bg',           $s['tooltip_bg'],           'color');
+                    $field('Text',         'tooltip_text_color',   $s['tooltip_text_color'],   'color');
+                    $field('Title',        'tooltip_title_color',  $s['tooltip_title_color'],  'color');
+                    $field('"Read More"',  'tooltip_link_color',   $s['tooltip_link_color'],   'color');
+                    $field('Border Color', 'tooltip_border_color', $s['tooltip_border_color'], 'color');
+                $grid_close();
+
+                $group('Size & Shape');
+                $grid_open();
+                    $field('Font Size',    'tooltip_font_size',     $s['tooltip_font_size'],     'number', [], 'px');
+                    $field('Line Height',  'tooltip_line_height',   $s['tooltip_line_height'],   'float');
+                    $field('Padding V',    'tooltip_padding_v',     $s['tooltip_padding_v'],     'number', [], 'px');
+                    $field('Padding H',    'tooltip_padding_h',     $s['tooltip_padding_h'],     'number', [], 'px');
+                    $field('Border Width', 'tooltip_border_width',  $s['tooltip_border_width'],  'number', [], 'px');
+                    $field('Radius',       'tooltip_border_radius', $s['tooltip_border_radius'], 'number', [], 'px');
+                    $field('Max Width',    'tooltip_max_width',     $s['tooltip_max_width'],     'number', [], 'px');
+                    $field('Shadow',       'tooltip_shadow',        $s['tooltip_shadow'],        'select', $tip_shad);
+                $grid_close();
+
+                $card_close();
+
+                // ══════════════════════════════════════════════════════
+                // CARD 3: [wpgt_glossary] — 5 sub-sections
+                $card_open('📋', '[wpgt_glossary] Index', '.wpgt-glossary-index');
+
+                // ── A–Z Bar ────────────────────────────────────────────
+                $group('A–Z Bar', '.wpgt-alphabet-bar');
+                $grid_open();
+                    $field('Background',     'az_bar_bg',           $s['az_bar_bg'],           'color');
+                    $field('Border Color',   'az_bar_border_color', $s['az_bar_border_color'], 'color');
+                    $field('Align',          'az_bar_justify',      $s['az_bar_justify'],      'select', $justifys);
+                    $field('Radius',         'az_bar_radius',       $s['az_bar_radius'],       'number', [], 'px');
+                    $field('Padding V',      'az_bar_padding_v',    $s['az_bar_padding_v'],    'number', [], 'px');
+                    $field('Padding H',      'az_bar_padding_h',    $s['az_bar_padding_h'],    'number', [], 'px');
+                $grid_close();
+
+                // ── Letter Links ────────────────────────────────────────
+                $group('Letter Links', '.wpgt-az-link');
+                $grid_open();
+                    $field('Color',       'az_link_color',       $s['az_link_color'],       'color');
+                    $field('Hover BG',    'az_link_hover_bg',    $s['az_link_hover_bg'],    'color');
+                    $field('Hover Color', 'az_link_hover_color', $s['az_link_hover_color'], 'color');
+                    $field('Radius',      'az_link_radius',      $s['az_link_radius'],      'number', [], 'px');
+                    $field('Font Size',   'az_link_size',        $s['az_link_size'],        'number', [], 'px');
+                    $field('Font Weight', 'az_link_weight',      $s['az_link_weight'],      'select', $weights);
+                $grid_close();
+
+                // ── Active Letter ───────────────────────────────────────
+                $group('Active Letter', '.wpgt-az-current');
+                $grid_open();
+                    $field('Background',  'az_current_bg',           $s['az_current_bg'],           'color');
+                    $field('Color',       'az_current_color',        $s['az_current_color'],        'color');
+                    $field('Hover BG',    'az_current_hover_bg',     $s['az_current_hover_bg'],     'color');
+                    $field('Hover Color', 'az_current_hover_color',  $s['az_current_hover_color'],  'color');
+                    $field('Border Color','az_current_border_color', $s['az_current_border_color'], 'color');
+                    $field('Border Width','az_current_border_width', $s['az_current_border_width'], 'number', [], 'px');
+                    $field('Border Style','az_current_border_style', $s['az_current_border_style'], 'select', $bstyles);
+                    $field('Border Radius','az_current_border_radius',$s['az_current_border_radius'],'number', [], 'px');
+                $grid_close();
+
+                // ── Letter Headings ─────────────────────────────────────
+                $group('Letter Headings', '.wpgt-letter-heading');
+                $grid_open();
+                    $field('Color',        'letter_heading_color',        $s['letter_heading_color'],        'color');
+                    $field('Border Color', 'letter_heading_border',       $s['letter_heading_border'],       'color');
+                    $field('Border Top',   'letter_heading_border_top',   $s['letter_heading_border_top'],   'number', [], 'px');
+                    $field('Border Bottom','letter_heading_border_bottom',$s['letter_heading_border_bottom'],'number', [], 'px');
+                    $field('Border Style', 'letter_heading_border_style', $s['letter_heading_border_style'], 'select', $bstyles);
+                    $field('Font Size',    'letter_heading_size',         $s['letter_heading_size'],         'number', [], 'px');
+                    $field('Font Weight',  'letter_heading_weight',       $s['letter_heading_weight'],       'select', $weights);
+                    $field('Transform',    'letter_heading_transform',    $s['letter_heading_transform'],    'select', $transforms);
+                    $field('Text Align',   'letter_heading_align',        $s['letter_heading_align'],        'select', $aligns);
+                    $field('Display',      'letter_heading_display',      $s['letter_heading_display'],      'select', ['inline-block'=>'Inline','block'=>'Block']);
+                    $field('Full Width',   'letter_heading_full_width',   $s['letter_heading_full_width'],   'select', ['0'=>'Auto','1'=>'100%']);
+                    $field('Margin Bottom','letter_heading_mb',           $s['letter_heading_mb'],           'number', [], 'px');
+                $grid_close();
+
+                // ── Term Cards ──────────────────────────────────────────
+                $group('Term Cards', '.wpgt-term-item');
+                $grid_open();
+                    $field('Background',   'term_card_bg',          $s['term_card_bg'],          'color');
+                    $field('Border',       'term_card_border',      $s['term_card_border'],      'color');
+                    $field('Hover Border', 'term_card_hover_border',$s['term_card_hover_border'],'color');
+                    $field('Radius',       'term_card_radius',      $s['term_card_radius'],      'number', [], 'px');
+                    $field('Shadow',       'term_card_shadow',      $s['term_card_shadow'],      'select', $card_shad);
+                    $field('Padding V',    'term_card_padding_v',   $s['term_card_padding_v'],   'number', [], 'px');
+                    $field('Padding H',    'term_card_padding_h',   $s['term_card_padding_h'],   'number', [], 'px');
+                $grid_close();
+
+                $group('Term Name', '.wpgt-term-link');
+                $grid_open();
+                    $field('Color',      'term_link_color',    $s['term_link_color'],   'color');
+                    $field('Font Size',  'term_link_size',     $s['term_link_size'],    'number', [], 'px');
+                    $field('Font Weight','term_link_weight',   $s['term_link_weight'],  'select', $weights);
+                $grid_close();
+
+                $group('Excerpt', '.wpgt-term-excerpt');
+                $grid_open();
+                    $field('Color',     'term_excerpt_color', $s['term_excerpt_color'], 'color');
+                    $field('Font Size', 'term_excerpt_size',  $s['term_excerpt_size'],  'number', [], 'px');
+                $grid_close();
+
+                $card_close();
+
+                // ══════════════════════════════════════════════════════
+                // CARD 4: [wpgt_term] Term Box
+                $card_open('📦', '[wpgt_term] — Term Box', '.wpgt-term-box');
+
+                $group('Colors');
+                $grid_open();
+                    $field('Background',      'termbox_bg',           $s['termbox_bg'],           'color');
+                    $field('Left Border',     'termbox_border_color', $s['termbox_border_color'], 'color');
+                $grid_close();
+
+                $group('Title', '.wpgt-term-box__title');
+                $grid_open();
+                    $field('Color',      'termbox_title_color',  $s['termbox_title_color'],  'color');
+                    $field('Font Size',  'termbox_title_size',   $s['termbox_title_size'],   'number', [], 'px');
+                    $field('Font Weight','termbox_title_weight', $s['termbox_title_weight'], 'select', $weights);
+                $grid_close();
+
+                $group('Definition', '.wpgt-term-box__definition');
+                $grid_open();
+                    $field('Color',     'termbox_text_color', $s['termbox_text_color'], 'color');
+                    $field('Font Size', 'termbox_text_size',  $s['termbox_text_size'],  'number', [], 'px');
+                $grid_close();
+
+                $group('Shape & Spacing');
+                $grid_open();
+                    $field('Border Width', 'termbox_border_width', $s['termbox_border_width'], 'number', [], 'px');
+                    $field('Radius',       'termbox_radius',       $s['termbox_radius'],       'number', [], 'px');
+                    $field('Padding V',    'termbox_padding_v',    $s['termbox_padding_v'],    'number', [], 'px');
+                    $field('Padding H',    'termbox_padding_h',    $s['termbox_padding_h'],    'number', [], 'px');
+                    $field('Shadow',       'termbox_shadow',       $s['termbox_shadow'],       'select', $card_shad, '', true);
+                $grid_close();
+
+                $card_close();
+
+                // ══════════════════════════════════════════════════════
+                // CARD 5: [wpgt_search] Widget
+                $card_open('🔍', '[wpgt_search] — Search Widget', '.wpgt-search-widget');
+
+                $group('Input', '.wpgt-search-input');
+                $grid_open();
+                    $field('Border',     'search_input_border',    $s['search_input_border'],    'color');
+                    $field('Focus Ring', 'search_input_focus',     $s['search_input_focus'],     'color');
+                    $field('Radius',     'search_input_radius',    $s['search_input_radius'],    'number', [], 'px');
+                    $field('Font Size',  'search_input_size',      $s['search_input_size'],      'number', [], 'px');
+                    $field('Padding V',  'search_input_padding_v', $s['search_input_padding_v'], 'number', [], 'px');
+                    $field('Padding H',  'search_input_padding_h', $s['search_input_padding_h'], 'number', [], 'px');
+                $grid_close();
+
+                $group('Results Dropdown', '.wpgt-search-results');
+                $grid_open();
+                    $field('Background', 'search_results_bg',      $s['search_results_bg'],      'color');
+                    $field('Item Hover', 'search_result_hover_bg', $s['search_result_hover_bg'], 'color');
+                    $field('Radius',     'search_results_radius',  $s['search_results_radius'],  'number', [], 'px');
+                    $field('Shadow',     'search_results_shadow',  $s['search_results_shadow'],  'select', $sr_shad);
+                $grid_close();
+
+                $group('Result Item Text', '.wpgt-search-result-item');
+                $grid_open();
+                    $field('Title Color',   'search_result_title',     $s['search_result_title'],     'color');
+                    $field('Excerpt Color', 'search_result_excerpt',   $s['search_result_excerpt'],   'color');
+                    $field('Padding V',     'search_result_padding_v', $s['search_result_padding_v'], 'number', [], 'px');
+                    $field('Padding H',     'search_result_padding_h', $s['search_result_padding_h'], 'number', [], 'px');
+                $grid_close();
+
+                $card_close();
                 ?>
-            </table>
 
-            <div style="margin:12px 0 28px;display:flex;gap:10px;align-items:center;">
-                <?php submit_button( __( 'Save Styles', 'wp-glossary-tooltip' ), 'primary', 'submit', false ); ?>
-                <a href="<?php echo esc_url( wp_nonce_url(
-                    admin_url( 'admin-post.php?action=wpgt_save_styles&wpgt_reset_styles=1' ),
-                    'wpgt_styles_save', 'wpgt_styles_nonce'
-                ) ); ?>"
-                   class="button button-secondary"
-                   onclick="return confirm('<?php esc_attr_e( 'Reset all styles to plugin defaults?', 'wp-glossary-tooltip' ); ?>')">
-                    <?php esc_html_e( 'Reset to Defaults', 'wp-glossary-tooltip' ); ?>
-                </a>
-            </div>
+                <div style="margin:24px 0 32px;display:flex;gap:10px;align-items:center;">
+                    <?php submit_button( __( 'Save Styles', 'wp-glossary-tooltip' ), 'primary', 'submit', false ); ?>
+                    <a href="<?php echo esc_url( wp_nonce_url(
+                        admin_url( 'admin-post.php?action=wpgt_save_styles&wpgt_reset_styles=1' ),
+                        'wpgt_styles_save', 'wpgt_styles_nonce'
+                    ) ); ?>"
+                       class="button button-secondary"
+                       onclick="return confirm('<?php esc_attr_e( 'Reset all styles to plugin defaults?', 'wp-glossary-tooltip' ); ?>')">
+                        <?php esc_html_e( 'Reset to Defaults', 'wp-glossary-tooltip' ); ?>
+                    </a>
+                </div>
+
+                </div><!-- /.wpgt-styles-fields -->
+
+                <!-- ════ RIGHT: sticky live preview ════ -->
+                <div class="wpgt-styles-preview">
+                    <div class="wpgt-pv-sticky">
+
+                        <div class="wpgt-pv-header">
+                            <strong><?php esc_html_e( 'Live Preview', 'wp-glossary-tooltip' ); ?></strong>
+                            <span class="wpgt-pv-sub"><?php esc_html_e( 'Updates as you edit', 'wp-glossary-tooltip' ); ?></span>
+                        </div>
+
+                        <div class="wpgt-pv-tabs" role="tablist">
+                            <button type="button" class="wpgt-pv-tab wpgt-pv-tab--active" data-panel="tooltip"><?php esc_html_e('Tooltip','wp-glossary-tooltip'); ?></button>
+                            <button type="button" class="wpgt-pv-tab" data-panel="glossary"><?php esc_html_e('Glossary','wp-glossary-tooltip'); ?></button>
+                            <button type="button" class="wpgt-pv-tab" data-panel="termbox"><?php esc_html_e('Term Box','wp-glossary-tooltip'); ?></button>
+                            <button type="button" class="wpgt-pv-tab" data-panel="search"><?php esc_html_e('Search','wp-glossary-tooltip'); ?></button>
+                        </div>
+
+                        <!-- ── Tooltip panel ── -->
+                        <div id="wpgt-pv-panel-tooltip" class="wpgt-pv-panel">
+                            <p class="wpgt-pv-label"><?php esc_html_e('Trigger word in content:','wp-glossary-tooltip'); ?></p>
+                            <p style="margin:0 0 16px;font-size:0.95rem;line-height:1.6;">A sentence with a <span id="wpgt-pv-trigger" style="border-bottom:2px dashed #2563eb;cursor:help;">glossary term</span> in it.</p>
+                            <p class="wpgt-pv-label"><?php esc_html_e('Tooltip bubble:','wp-glossary-tooltip'); ?></p>
+                            <div id="wpgt-pv-tip" style="display:inline-block;padding:12px 14px;border-radius:6px;max-width:270px;box-shadow:0 8px 24px rgba(0,0,0,.18);background:#1e293b;color:#f1f5f9;border:1px solid rgba(255,255,255,.08);">
+                                <strong id="wpgt-pv-title" style="display:block;margin-bottom:5px;font-size:0.9375rem;color:#fff;line-height:1.3;">Sample Term</strong>
+                                <span id="wpgt-pv-text" style="display:block;font-size:0.875rem;margin-bottom:6px;line-height:1.55;">Short tooltip definition text.</span>
+                                <a id="wpgt-pv-more" href="#" onclick="return false;" style="font-size:0.8125rem;font-weight:500;color:#93c5fd;">Read more →</a>
+                            </div>
+                        </div>
+
+                        <!-- ── Glossary panel ── -->
+                        <div id="wpgt-pv-panel-glossary" class="wpgt-pv-panel" style="display:none;">
+                            <p class="wpgt-pv-label"><?php esc_html_e('A–Z bar:','wp-glossary-tooltip'); ?></p>
+                            <nav id="wpgt-pv-az" style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:12px;padding:7px 9px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;">
+                                <?php foreach ( ['ა','ბ','გ','დ','ე','ვ'] as $gl ) : ?>
+                                <span class="wpgt-pv-az-link" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:4px;font-weight:600;font-size:0.8rem;color:#2563eb;"><?php echo esc_html($gl); ?></span>
+                                <?php endforeach; ?>
+                            </nav>
+                            <p class="wpgt-pv-label"><?php esc_html_e('Letter heading:','wp-glossary-tooltip'); ?></p>
+                            <h3 id="wpgt-pv-letter" style="font-size:1.4rem;font-weight:700;color:#2563eb;margin:0 0 10px;padding-bottom:4px;border-bottom:2px solid #2563eb;display:inline-block;">ა</h3>
+                            <p class="wpgt-pv-label" style="margin-top:4px;"><?php esc_html_e('Term card:','wp-glossary-tooltip'); ?></p>
+                            <div id="wpgt-pv-card" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 14px;">
+                                <a id="wpgt-pv-term-link" href="#" onclick="return false;" style="display:block;font-weight:600;font-size:0.9375rem;text-decoration:none;color:#2563eb;margin-bottom:4px;">სტრესი</a>
+                                <p id="wpgt-pv-excerpt" style="margin:0;font-size:0.8125rem;color:#64748b;line-height:1.45;">A state of mental or emotional strain.</p>
+                            </div>
+                        </div>
+
+                        <!-- ── Term box panel ── -->
+                        <div id="wpgt-pv-panel-termbox" class="wpgt-pv-panel" style="display:none;">
+                            <p class="wpgt-pv-label"><?php esc_html_e('[wpgt_term] output:','wp-glossary-tooltip'); ?></p>
+                            <div id="wpgt-pv-box" style="border-left:4px solid #2563eb;padding:14px 18px;background:#f8fafc;border-radius:0 6px 6px 0;">
+                                <h4 style="margin:0 0 8px;font-size:1.05rem;"><a id="wpgt-pv-box-title" href="#" onclick="return false;" style="color:#2563eb;text-decoration:none;">Term Title</a></h4>
+                                <p id="wpgt-pv-box-def" style="margin:0;color:#374151;font-size:0.9rem;">Definition text shown in the term box shortcode output.</p>
+                            </div>
+                        </div>
+
+                        <!-- ── Search panel ── -->
+                        <div id="wpgt-pv-panel-search" class="wpgt-pv-panel" style="display:none;">
+                            <p class="wpgt-pv-label"><?php esc_html_e('[wpgt_search] output:','wp-glossary-tooltip'); ?></p>
+                            <input id="wpgt-pv-search-input" type="text"
+                                   placeholder="<?php esc_attr_e('Search glossary…','wp-glossary-tooltip'); ?>"
+                                   style="width:100%;padding:10px 16px;font-size:0.9375rem;border:1.5px solid #d1d5db;border-radius:6px;box-sizing:border-box;margin-bottom:6px;" readonly />
+                            <div id="wpgt-pv-search-results" style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.12);overflow:hidden;">
+                                <div style="padding:10px 14px;background:#f0f7ff;border-bottom:1px solid #f1f5f9;">
+                                    <span id="wpgt-pv-result-title" style="display:block;font-weight:600;font-size:0.9rem;color:#2563eb;">სტრესი</span>
+                                    <span id="wpgt-pv-result-excerpt" style="display:block;font-size:0.8rem;color:#64748b;margin-top:2px;">A state of mental tension.</span>
+                                </div>
+                                <div style="padding:10px 14px;">
+                                    <span style="display:block;font-weight:600;font-size:0.9rem;color:#1e293b;">მედიტაცია</span>
+                                    <span style="display:block;font-size:0.8rem;color:#64748b;margin-top:2px;">A practice of focused attention.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div><!-- /.wpgt-pv-sticky -->
+                </div><!-- /.wpgt-styles-preview -->
+
+            </div><!-- /.wpgt-styles-layout -->
         </form>
 
         <script>
         jQuery(function($){
-            // ── Initialize color pickers (class wpgt-style-picker, NOT wpgt-color-picker)
-            // so admin.js never double-initializes them.
+
+            // ── Preview tab switcher ────────────────────────────────────
+            $('.wpgt-pv-tab').on('click', function(){
+                $('.wpgt-pv-tab').removeClass('wpgt-pv-tab--active');
+                $(this).addClass('wpgt-pv-tab--active');
+                $('.wpgt-pv-panel').hide();
+                $('#wpgt-pv-panel-' + $(this).data('panel')).show();
+            });
+
+            // ── Initialize color pickers (class wpgt-style-picker, NOT wpgt-color-picker) ──
             $('#wpgt-tab-styles .wpgt-style-picker').wpColorPicker({
-                change: function(e, ui){
-                    wpgtStylePreview($(this).data('key'), ui.color.toString());
-                },
-                clear: function(){
-                    wpgtStylePreview($(this).data('key'), '');
-                }
+                change: function(e, ui){ wpgtStylePreview($(this).data('key'), ui.color.toString()); },
+                clear:  function()     { wpgtStylePreview($(this).data('key'), ''); }
             });
 
             // ── Apply saved values to preview on page load ──────────────
-            <?php foreach ( $s as $key => $val ) :
-                $val_js = esc_js( (string) $val );
-            ?>
-            wpgtStylePreview('<?php echo esc_js($key); ?>', '<?php echo $val_js; ?>');
+            <?php foreach ( $s as $key => $val ) : ?>
+            wpgtStylePreview('<?php echo esc_js($key); ?>', '<?php echo esc_js((string)$val); ?>');
             <?php endforeach; ?>
 
-            // ── Number and select inputs ────────────────────────────────
+            // ── Number / float / select inputs ──────────────────────────
             $('#wpgt-tab-styles').on('input change', 'input[type="number"], select', function(){
                 wpgtStylePreview($(this).data('key'), $(this).val());
             });
 
+            // ── Preview update function ──────────────────────────────────
+
+            function px(v, def){ return parseFloat(v) > 0 ? v+'px' : def; }
+
             function wpgtStylePreview(key, val) {
-                var tip   = $('#wpgt-pv-tip');
-                var trig  = $('#wpgt-pv-trigger');
-                var box   = $('#wpgt-pv-box');
+                if (!key) return;
+                var tip  = $('#wpgt-pv-tip');
+                var trig = $('#wpgt-pv-trigger');
+                var box  = $('#wpgt-pv-box');
+                var az   = $('#wpgt-pv-az');
+                var card = $('#wpgt-pv-card');
+                var si   = $('#wpgt-pv-search-input');
+                var sr   = $('#wpgt-pv-search-results');
+
                 switch(key) {
-                    case 'trigger_underline_color': trig.css('border-bottom-color', val||''); break;
-                    case 'trigger_underline_style': trig.css('border-bottom-style', val||'dashed'); break;
-                    case 'trigger_hover_color':     trig.css('color', val||''); break;
-                    case 'trigger_font_weight':     trig.css('font-weight', val||'400'); break;
+                    // ── Trigger ────────────────────────────────────────
+                    case 'trigger_color':            trig.css('border-bottom-color', val||'#2563eb'); break;
+                    case 'trigger_underline_style':  trig.css('border-bottom-style', val||'dashed'); break;
+                    case 'trigger_underline_width':  trig.css('border-bottom-width', px(val,'2px')); break;
+                    case 'trigger_hover_color':      trig.css('color', val||''); break;
+                    case 'trigger_font_weight':      trig.css('font-weight', val||'400'); break;
+                    case 'trigger_font_size':        trig.css('font-size', parseFloat(val)>0 ? val+'px' : ''); break;
+                    case 'trigger_text_transform':   trig.css('text-transform', val||'none'); break;
 
-                    case 'tooltip_text_color':      tip.css('color', val||''); $('#wpgt-pv-text').css('color',val||''); break;
-                    case 'tooltip_title_color':     $('#wpgt-pv-title').css('color', val||'#fff'); break;
-                    case 'tooltip_link_color':      $('#wpgt-pv-more').css('color', val||'#93c5fd'); break;
-                    case 'tooltip_font_size':       tip.css('font-size', val > 0 ? val+'px' : ''); break;
-                    case 'tooltip_border_radius':   tip.css('border-radius', val > 0 ? val+'px' : '6px'); break;
-                    case 'tooltip_max_width':       tip.css('max-width', val > 0 ? val+'px' : ''); break;
+                    // ── Tooltip bubble ─────────────────────────────────
+                    case 'tooltip_bg':            tip.css('background', val||'#1e293b'); break;
+                    case 'tooltip_text_color':    tip.css('color', val||''); $('#wpgt-pv-text').css('color',val||''); break;
+                    case 'tooltip_title_color':   $('#wpgt-pv-title').css('color', val||'#fff'); break;
+                    case 'tooltip_link_color':    $('#wpgt-pv-more').css('color', val||'#93c5fd'); break;
+                    case 'tooltip_font_size':     tip.css('font-size', px(val,'')); break;
+                    case 'tooltip_line_height':   tip.css('line-height', parseFloat(val)>0 ? val : '1.55'); $('#wpgt-pv-text').css('line-height', parseFloat(val)>0 ? val : '1.55'); break;
+                    case 'tooltip_padding_v':     tip.css({'padding-top':px(val,'12px'),'padding-bottom':px(val,'10px')}); break;
+                    case 'tooltip_padding_h':     tip.css({'padding-left':px(val,'14px'),'padding-right':px(val,'14px')}); break;
+                    case 'tooltip_border_radius': tip.css('border-radius', px(val,'6px')); break;
+                    case 'tooltip_border_width':  tip.css('border-width', px(val,'1px')); break;
+                    case 'tooltip_border_color':  tip.css('border-color', val||'rgba(255,255,255,.08)'); break;
+                    case 'tooltip_max_width':     tip.css('max-width', parseFloat(val)>0 ? val+'px' : '270px'); break;
+                    case 'tooltip_shadow':        { var ts = {none:'none',sm:'0 1px 4px rgba(0,0,0,.10)',default:'0 8px 24px rgba(0,0,0,.18)',lg:'0 16px 40px rgba(0,0,0,.30)'}; tip.css('box-shadow', ts[val]||ts['default']); break; }
 
-                    case 'termbox_border_color':    box.css('border-left-color', val||'#2563eb'); break;
-                    case 'termbox_border_width':    box.css('border-left-width', val > 0 ? val+'px' : '4px'); break;
-                    case 'termbox_bg':              box.css('background', val||'#f8fafc'); break;
-                    case 'termbox_title_color':     $('#wpgt-pv-box-title').css('color', val||'#2563eb'); break;
-                    case 'termbox_title_size':      $('#wpgt-pv-box-title').css('font-size', val > 0 ? val+'px' : ''); break;
-                    case 'termbox_text_color':      $('#wpgt-pv-box-def').css('color', val||'#374151'); break;
-                    case 'termbox_radius':          box.css('border-radius', val > 0 ? '0 '+val+'px '+val+'px 0' : '0 6px 6px 0'); break;
+                    // ── A-Z bar ────────────────────────────────────────
+                    case 'az_bar_bg':           az.css('background', val||'#f8fafc'); break;
+                    case 'az_bar_border_color': az.css('border-color', val||'#e2e8f0'); break;
+                    case 'az_bar_radius':       az.css('border-radius', px(val,'6px')); break;
+                    case 'az_bar_padding_v':    az.css({'padding-top':px(val,'7px'),'padding-bottom':px(val,'7px')}); break;
+                    case 'az_bar_padding_h':    az.css({'padding-left':px(val,'9px'),'padding-right':px(val,'9px')}); break;
+                    case 'az_bar_justify':      az.css('justify-content', val||'flex-start'); break;
+                    case 'az_link_color':       az.find('.wpgt-pv-az-link').css('color', val||'#2563eb'); break;
+                    case 'az_link_radius':      az.find('.wpgt-pv-az-link').css('border-radius', px(val,'4px')); break;
+                    case 'az_link_size':        az.find('.wpgt-pv-az-link').css('font-size', px(val,'')); break;
+                    case 'az_link_weight':      az.find('.wpgt-pv-az-link').css('font-weight', val||'600'); break;
+                    case 'az_current_bg':       break;
+                    case 'az_current_color':    break;
+                    case 'az_current_border_color': break;
+                    case 'az_current_border_width': break;
+                    case 'az_current_hover_bg':     break;
+                    case 'az_current_hover_color':  break;
+
+                    // ── Letter heading ─────────────────────────────────
+                    case 'letter_heading_color':         $('#wpgt-pv-letter').css('color', val||'#2563eb'); break;
+                    case 'letter_heading_border':        $('#wpgt-pv-letter').css({'border-top-color':val||'#2563eb','border-bottom-color':val||'#2563eb'}); break;
+                    case 'letter_heading_border_top':    $('#wpgt-pv-letter').css('border-top-width', parseFloat(val)>0 ? val+'px' : '0'); break;
+                    case 'letter_heading_border_bottom': $('#wpgt-pv-letter').css('border-bottom-width', parseFloat(val)>0 ? val+'px' : '2px'); break;
+                    case 'letter_heading_border_style':  $('#wpgt-pv-letter').css({'border-top-style':val||'solid','border-bottom-style':val||'solid'}); break;
+                    case 'letter_heading_size':          $('#wpgt-pv-letter').css('font-size', px(val,'1.4rem')); break;
+                    case 'letter_heading_weight':        $('#wpgt-pv-letter').css('font-weight', val||'700'); break;
+                    case 'letter_heading_transform':     $('#wpgt-pv-letter').css('text-transform', val||'none'); break;
+                    case 'letter_heading_mb':            $('#wpgt-pv-letter').css('margin-bottom', px(val,'10px')); break;
+                    case 'letter_heading_align':         $('#wpgt-pv-letter').css('text-align', val||'left'); break;
+                    case 'letter_heading_display':       $('#wpgt-pv-letter').css('display', val||'inline-block'); break;
+                    case 'letter_heading_full_width':    $('#wpgt-pv-letter').css('width', val==='1'||val===1 ? '100%' : 'auto'); break;
+                    case 'letter_heading_justify':       break;
+
+                    // ── Term cards ─────────────────────────────────────
+                    case 'term_card_bg':          card.css('background', val||'#f8fafc'); break;
+                    case 'term_card_border':      card.css('border-color', val||'#e2e8f0'); break;
+                    case 'term_card_radius':      card.css('border-radius', px(val,'6px')); break;
+                    case 'term_card_hover_border':break;
+                    case 'term_card_shadow':      { var cs={none:'none',sm:'0 1px 3px rgba(0,0,0,.06)',md:'0 2px 8px rgba(0,0,0,.10)',lg:'0 8px 20px rgba(0,0,0,.14)'}; card.css('box-shadow',cs[val]||'none'); break; }
+                    case 'term_card_padding_v':   card.css({'padding-top':px(val,'12px'),'padding-bottom':px(val,'12px')}); break;
+                    case 'term_card_padding_h':   card.css({'padding-left':px(val,'14px'),'padding-right':px(val,'14px')}); break;
+                    case 'term_link_color':       $('#wpgt-pv-term-link').css('color', val||'#2563eb'); break;
+                    case 'term_link_size':        $('#wpgt-pv-term-link').css('font-size', px(val,'')); break;
+                    case 'term_link_weight':      $('#wpgt-pv-term-link').css('font-weight', val||'600'); break;
+                    case 'term_excerpt_color':    $('#wpgt-pv-excerpt').css('color', val||'#64748b'); break;
+                    case 'term_excerpt_size':     $('#wpgt-pv-excerpt').css('font-size', px(val,'')); break;
+
+                    // ── Term box ───────────────────────────────────────
+                    case 'termbox_border_color': box.css('border-left-color', val||'#2563eb'); break;
+                    case 'termbox_border_width': box.css('border-left-width', px(val,'4px')); break;
+                    case 'termbox_bg':           box.css('background', val||'#f8fafc'); break;
+                    case 'termbox_title_color':  $('#wpgt-pv-box-title').css('color', val||'#2563eb'); break;
+                    case 'termbox_title_size':   $('#wpgt-pv-box-title').css('font-size', px(val,'')); break;
+                    case 'termbox_title_weight': $('#wpgt-pv-box-title').css('font-weight', val||'600'); break;
+                    case 'termbox_text_color':   $('#wpgt-pv-box-def').css('color', val||'#374151'); break;
+                    case 'termbox_text_size':    $('#wpgt-pv-box-def').css('font-size', px(val,'')); break;
+                    case 'termbox_radius':       { var r=parseFloat(val)||0; box.css('border-radius', r>0 ? '0 '+r+'px '+r+'px 0' : '0 6px 6px 0'); break; }
+                    case 'termbox_padding_v':    box.css({'padding-top':px(val,'14px'),'padding-bottom':px(val,'14px')}); break;
+                    case 'termbox_padding_h':    box.css({'padding-left':px(val,'18px'),'padding-right':px(val,'18px')}); break;
+                    case 'termbox_shadow':       { var ts2={none:'none',sm:'0 1px 3px rgba(0,0,0,.06)',md:'0 2px 8px rgba(0,0,0,.10)',lg:'0 8px 20px rgba(0,0,0,.14)'}; box.css('box-shadow',ts2[val]||'none'); break; }
+
+                    // ── Search ─────────────────────────────────────────
+                    case 'search_input_border':    si.css('border-color', val||'#d1d5db'); break;
+                    case 'search_input_focus':     break;
+                    case 'search_input_radius':    si.css('border-radius', px(val,'6px')); break;
+                    case 'search_input_size':      si.css('font-size', px(val,'')); break;
+                    case 'search_input_padding_v': si.css({'padding-top':px(val,'10px'),'padding-bottom':px(val,'10px')}); break;
+                    case 'search_input_padding_h': si.css({'padding-left':px(val,'16px'),'padding-right':px(val,'16px')}); break;
+                    case 'search_results_bg':      sr.css('background', val||'#fff'); break;
+                    case 'search_results_radius':  sr.css('border-radius', px(val,'6px')); break;
+                    case 'search_results_shadow':  { var srs={none:'none',sm:'0 1px 3px rgba(0,0,0,.06)',default:'0 4px 16px rgba(0,0,0,.12)',lg:'0 8px 24px rgba(0,0,0,.18)'}; sr.css('box-shadow',srs[val]||srs['default']); break; }
+                    case 'search_result_hover_bg': sr.find('div:first').css('background', val||'#f0f7ff'); break;
+                    case 'search_result_title':    $('#wpgt-pv-result-title').css('color', val||'#2563eb'); break;
+                    case 'search_result_excerpt':  $('#wpgt-pv-result-excerpt').css('color', val||'#64748b'); break;
+                    case 'search_result_padding_v':sr.find('div').css({'padding-top':px(val,'10px'),'padding-bottom':px(val,'10px')}); break;
+                    case 'search_result_padding_h':sr.find('div').css({'padding-left':px(val,'14px'),'padding-right':px(val,'14px')}); break;
                 }
             }
         });
         </script>
         <style>
-        .wpgt-style-section-heading{margin:28px 0 4px;padding:10px 14px;background:#f6f7f7;border-left:4px solid #2563eb;font-size:.95rem;border-radius:0 4px 4px 0;}
-        .wpgt-style-table th{width:220px;padding:8px 10px 8px 0;}
-        .wpgt-style-table td{padding:6px 10px;}
+        /* ════════════════════════════════════════════════════════════
+           OUTER LAYOUT  –  fields column + sticky preview column
+        ════════════════════════════════════════════════════════════ */
+        #wpgt-tab-styles .wpgt-styles-layout {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+        #wpgt-tab-styles .wpgt-styles-fields  { flex: 1; min-width: 0; }
+        #wpgt-tab-styles .wpgt-styles-preview { width: 200px; flex-shrink: 0; }
+        @media (max-width: 900px) {
+            #wpgt-tab-styles .wpgt-styles-layout  { flex-direction: column; }
+            #wpgt-tab-styles .wpgt-styles-preview { width: 100%; }
+        }
+
+        /* ════════════════════════════════════════════════════════════
+           CARDS  –  one per component section
+        ════════════════════════════════════════════════════════════ */
+        .wpgt-card {
+            background: #fff;
+            border: 1px solid #e0e3e8;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+        .wpgt-card-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: #f6f7f8;
+            border-bottom: 1px solid #e0e3e8;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #1e293b;
+        }
+        .wpgt-card-icon { font-size: 1rem; line-height: 1; }
+        .wpgt-card-body { padding: 14px; }
+
+        /* ════════════════════════════════════════════════════════════
+           GROUP LABELS  –  sub-sections inside a card
+        ════════════════════════════════════════════════════════════ */
+        .wpgt-group-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: #64748b;
+            margin: 14px 0 8px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #f1f3f5;
+        }
+        .wpgt-group-label:first-child { margin-top: 0; }
+
+        /* ════════════════════════════════════════════════════════════
+           2-COLUMN FIELD GRID
+        ════════════════════════════════════════════════════════════ */
+        .wpgt-field-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px 14px;
+        }
+
+        /* ════════════════════════════════════════════════════════════
+           INDIVIDUAL FIELD  –  label on top, control below
+        ════════════════════════════════════════════════════════════ */
+        .wpgt-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+        .wpgt-field--full {
+            grid-column: 1 / -1;   /* spans both columns */
+        }
+        .wpgt-field label {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #475569;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* ── Color picker row ─────────────────────────────────── */
+        .wpgt-field-color-wrap .wp-color-result {
+            width: 28px !important;
+            height: 24px !important;
+            border-radius: 4px !important;
+            margin: 0 !important;
+        }
+        .wpgt-field-color-wrap .wp-picker-container {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .wpgt-field-color-wrap .wp-color-result-text { display: none; }
+        /* Compact the hidden text input beside the swatch */
+        .wpgt-field-color-wrap input[type=text].wpgt-style-picker {
+            width: 72px !important;
+            font-size: 0.75rem !important;
+            height: 24px !important;
+            padding: 0 4px !important;
+            border-radius: 4px;
+        }
+
+        /* ── Number input row ─────────────────────────────────── */
+        .wpgt-field-num-wrap {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+        .wpgt-field-num-wrap input[type=number] {
+            width: 54px !important;
+            font-size: 0.8rem;
+            padding: 3px 5px !important;
+            height: 26px;
+            border: 1px solid #c3c4c7;
+            border-radius: 4px;
+            box-shadow: none;
+        }
+        .wpgt-field-num-wrap span {
+            font-size: 0.72rem;
+            color: #94a3b8;
+        }
+
+        /* ── Select ───────────────────────────────────────────── */
+        .wpgt-field select {
+            width: 100%;
+            font-size: 0.8rem;
+            height: 26px;
+            padding: 0 4px;
+            border: 1px solid #c3c4c7;
+            border-radius: 4px;
+            background: #fff;
+        }
+
+        /* ── Float input ──────────────────────────────────────── */
+        .wpgt-field input[type=number][step] {
+            width: 64px !important;
+            font-size: 0.8rem;
+            padding: 3px 5px !important;
+            height: 26px;
+            border: 1px solid #c3c4c7;
+            border-radius: 4px;
+        }
+
+        /* ════════════════════════════════════════════════════════════
+           CSS CLASS BADGE
+        ════════════════════════════════════════════════════════════ */
+        .wpgt-css-badge {
+            font-size: 0.68rem;
+            font-weight: 400;
+            background: #eff6ff;
+            color: #2563eb;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-family: monospace;
+            letter-spacing: 0;
+            flex-shrink: 0;
+        }
+        .wpgt-css-badge--sm { font-size: 0.64rem; }
+
+        /* ════════════════════════════════════════════════════════════
+           STICKY PREVIEW SIDEBAR
+        ════════════════════════════════════════════════════════════ */
+        .wpgt-pv-sticky {
+            position: relative;
+            background: #fff;
+            border: 1px solid #e0e3e8;
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.07);
+        }
+        .wpgt-pv-header { margin-bottom: 10px; }
+        .wpgt-pv-header strong { font-size: 0.8rem; display: block; color: #1e293b; }
+        .wpgt-pv-sub { font-size: 0.68rem; color: #94a3b8; }
+
+        /* Preview tab bar */
+        .wpgt-pv-tabs {
+            display: flex;
+            gap: 1px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #e0e3e8;
+            flex-wrap: wrap;
+        }
+        .wpgt-pv-tab {
+            background: none;
+            border: 1px solid transparent;
+            border-bottom: none;
+            padding: 3px 6px;
+            cursor: pointer;
+            border-radius: 3px 3px 0 0;
+            font-size: 0.68rem;
+            color: #64748b;
+            margin-bottom: -1px;
+            line-height: 1.4;
+        }
+        .wpgt-pv-tab:hover { background: #f8fafc; }
+        .wpgt-pv-tab--active {
+            background: #fff;
+            border-color: #e0e3e8 #e0e3e8 #fff;
+            color: #1e293b;
+            font-weight: 600;
+        }
+        .wpgt-pv-label {
+            font-size: 0.62rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: #94a3b8;
+            margin: 0 0 4px;
+        }
+        .wpgt-pv-panel { font-size: 0.78rem; }
         </style>
         <?php
     }
@@ -955,53 +1478,104 @@ class WPGT_Admin {
      */
     public static function get_style_defaults(): array {
         return [
-            // Trigger words
-            'trigger_underline_color'  => '#2563eb',
+            // ── Trigger word ──────────────────────────────────────────────
+            'trigger_color'            => '#2563eb',   // combined underline + hover base (was trigger_underline_color)
             'trigger_underline_style'  => 'dashed',
+            'trigger_underline_width'  => '2',         // px
             'trigger_hover_color'      => '#2563eb',
             'trigger_font_weight'      => '400',
-            // Tooltip bubble
+            'trigger_font_size'        => '0',         // 0 = inherit
+            'trigger_text_transform'   => '',
+            // ── Tooltip bubble ────────────────────────────────────────────
+            'tooltip_bg'               => '',          // empty = use theme default
             'tooltip_text_color'       => '',
             'tooltip_title_color'      => '',
             'tooltip_link_color'       => '',
-            'tooltip_font_size'        => '14',
-            'tooltip_border_radius'    => '6',
-            'tooltip_max_width'        => '0',
-            // Glossary index – A-Z bar
+            'tooltip_font_size'        => '14',        // px
+            'tooltip_line_height'      => '1.55',
+            'tooltip_padding_v'        => '12',        // px
+            'tooltip_padding_h'        => '14',        // px
+            'tooltip_border_radius'    => '6',         // px
+            'tooltip_border_width'     => '1',         // px
+            'tooltip_border_color'     => '',          // empty = theme border
+            'tooltip_max_width'        => '0',         // 0 = auto
+            'tooltip_shadow'           => 'default',
+            // ── A-Z bar ───────────────────────────────────────────────────
             'az_bar_bg'                => '#f8fafc',
+            'az_bar_border_color'      => '#e2e8f0',
+            'az_bar_radius'            => '6',
+            'az_bar_padding_v'         => '10',
+            'az_bar_padding_h'         => '12',
+            'az_bar_justify'           => 'flex-start',  // justify-content for the bar
             'az_link_color'            => '#2563eb',
             'az_link_hover_bg'         => '#2563eb',
             'az_link_hover_color'      => '#ffffff',
             'az_link_radius'           => '4',
-            // Glossary index – letter headings
-            'letter_heading_color'     => '#2563eb',
-            'letter_heading_border'    => '#2563eb',
-            'letter_heading_size'      => '24',
-            // Glossary index – term cards
+            'az_link_size'             => '14',        // px
+            'az_link_weight'           => '600',
+            'az_current_bg'            => '#2563eb',
+            'az_current_color'         => '#ffffff',
+            'az_current_border_color'  => '',
+            'az_current_border_width'  => '0',
+            'az_current_border_style'  => 'solid',
+            'az_current_border_radius' => '4',
+            'az_current_hover_bg'      => '',
+            'az_current_hover_color'   => '',
+            // ── Letter headings ────────────────────────────────────────────
+            'letter_heading_color'          => '#2563eb',
+            'letter_heading_border'         => '#2563eb',
+            'letter_heading_size'           => '24',
+            'letter_heading_weight'         => '700',
+            'letter_heading_transform'      => '',
+            'letter_heading_mb'             => '12',
+            'letter_heading_align'          => 'left',    // text-align
+            'letter_heading_justify'        => 'flex-start', // justify-content (when flex)
+            'letter_heading_display'        => 'inline-block', // inline-block | block
+            'letter_heading_full_width'     => '0',       // 1 = width:100%
+            'letter_heading_border_top'     => '0',       // px top border width
+            'letter_heading_border_bottom'  => '2',       // px bottom border width (default underline)
+            'letter_heading_border_style'   => 'solid',
+            // ── Term cards ─────────────────────────────────────────────────
             'term_card_bg'             => '#f8fafc',
             'term_card_border'         => '#e2e8f0',
             'term_card_radius'         => '6',
             'term_card_hover_border'   => '#2563eb',
+            'term_card_shadow'         => 'none',
+            'term_card_padding_v'      => '12',
+            'term_card_padding_h'      => '14',
             'term_link_color'          => '#2563eb',
             'term_link_size'           => '15',
+            'term_link_weight'         => '600',
             'term_excerpt_color'       => '#64748b',
-            // Term box [wpgt_term]
+            'term_excerpt_size'        => '13',
+            // ── Term box [wpgt_term] ────────────────────────────────────────
             'termbox_border_color'     => '#2563eb',
             'termbox_border_width'     => '4',
             'termbox_bg'               => '#f8fafc',
             'termbox_title_color'      => '#2563eb',
             'termbox_title_size'       => '17',
+            'termbox_title_weight'     => '600',
             'termbox_text_color'       => '#374151',
+            'termbox_text_size'        => '0',
             'termbox_radius'           => '6',
-            // Search widget [wpgt_search]
+            'termbox_padding_v'        => '14',
+            'termbox_padding_h'        => '18',
+            'termbox_shadow'           => 'none',
+            // ── Search widget ───────────────────────────────────────────────
             'search_input_border'      => '#d1d5db',
             'search_input_focus'       => '#2563eb',
             'search_input_radius'      => '6',
             'search_input_size'        => '15',
+            'search_input_padding_v'   => '10',
+            'search_input_padding_h'   => '16',
             'search_results_bg'        => '#ffffff',
+            'search_results_radius'    => '6',
+            'search_results_shadow'    => 'default',
             'search_result_hover_bg'   => '#f0f7ff',
             'search_result_title'      => '#1e293b',
             'search_result_excerpt'    => '#64748b',
+            'search_result_padding_v'  => '10',
+            'search_result_padding_h'  => '14',
         ];
     }
 
@@ -1023,28 +1597,62 @@ class WPGT_Admin {
         $defaults = self::get_style_defaults();
         $clean    = [];
 
+        // Fields that accept hex colour OR the keyword 'transparent'
+        $bg_keys = [
+            'tooltip_bg', 'az_bar_bg', 'az_current_bg', 'az_link_hover_bg',
+            'az_current_hover_bg',
+            'term_card_bg', 'termbox_bg', 'search_results_bg', 'search_result_hover_bg',
+        ];
+        // Fields that accept hex colour only
+        $color_keys = [
+            'trigger_color','trigger_hover_color',
+            'tooltip_text_color','tooltip_title_color','tooltip_link_color',
+            'tooltip_border_color',
+            'az_bar_border_color','az_link_color','az_link_hover_color',
+            'az_current_color','az_current_border_color','az_current_hover_color',
+            'letter_heading_color','letter_heading_border',
+            'term_card_border','term_card_hover_border',
+            'term_link_color','term_excerpt_color',
+            'termbox_border_color','termbox_title_color','termbox_text_color',
+            'search_input_border','search_input_focus',
+            'search_result_title','search_result_excerpt',
+        ];
+        $select_keys = [
+            'trigger_underline_style'      => ['dashed','solid','dotted','none'],
+            'trigger_font_weight'          => ['400','500','600','700'],
+            'trigger_text_transform'       => ['','uppercase','lowercase','capitalize'],
+            'az_link_weight'               => ['400','500','600','700'],
+            'az_bar_justify'               => ['flex-start','center','flex-end','space-between'],
+            'az_current_border_style'      => ['solid','dashed','dotted','none'],
+            'letter_heading_weight'        => ['400','500','600','700'],
+            'letter_heading_transform'     => ['','uppercase','lowercase','capitalize'],
+            'letter_heading_align'         => ['left','center','right'],
+            'letter_heading_justify'       => ['flex-start','center','flex-end'],
+            'letter_heading_display'       => ['inline-block','block'],
+            'letter_heading_border_style'  => ['solid','dashed','dotted','none'],
+            'term_link_weight'             => ['400','500','600','700'],
+            'termbox_title_weight'         => ['400','500','600','700'],
+            'tooltip_shadow'               => ['none','sm','default','lg'],
+            'term_card_shadow'             => ['none','sm','md','lg'],
+            'termbox_shadow'               => ['none','sm','md','lg'],
+            'search_results_shadow'        => ['none','sm','default','lg'],
+        ];
+
         foreach ( $defaults as $key => $default ) {
             if ( ! isset( $raw[ $key ] ) ) continue;
             $val = $raw[ $key ];
-            // Colour fields
-            if ( in_array( $key, [
-                'trigger_underline_color','trigger_hover_color',
-                'tooltip_text_color','tooltip_title_color','tooltip_link_color',
-                'az_bar_bg','az_link_color','az_link_hover_bg','az_link_hover_color',
-                'letter_heading_color','letter_heading_border',
-                'term_card_bg','term_card_border','term_card_hover_border',
-                'term_link_color','term_excerpt_color',
-                'termbox_border_color','termbox_bg','termbox_title_color','termbox_text_color',
-                'search_input_border','search_input_focus','search_results_bg',
-                'search_result_hover_bg','search_result_title','search_result_excerpt',
-            ], true ) ) {
+            if ( in_array( $key, $bg_keys, true ) ) {
+                // Allow hex colours or the keyword 'transparent'
+                $clean[ $key ] = ( $val === 'transparent' ) ? 'transparent' : ( sanitize_hex_color( $val ) ?: '' );
+            } elseif ( in_array( $key, $color_keys, true ) ) {
                 $clean[ $key ] = sanitize_hex_color( $val ) ?: '';
-            // Select / enum fields
-            } elseif ( $key === 'trigger_underline_style' ) {
-                $clean[ $key ] = in_array( $val, ['dashed','solid','dotted','none'], true ) ? $val : 'dashed';
-            } elseif ( $key === 'trigger_font_weight' ) {
-                $clean[ $key ] = in_array( $val, ['400','500','600','700'], true ) ? $val : '400';
-            // Numeric (px) fields
+            } elseif ( isset( $select_keys[ $key ] ) ) {
+                $clean[ $key ] = in_array( $val, $select_keys[$key], true ) ? $val : $default;
+            } elseif ( $key === 'tooltip_line_height' ) {
+                $v = trim( $val );
+                $clean[ $key ] = ( $v !== '' && preg_match('/^\d*\.?\d+$/', $v) ) ? $v : '1.55';
+            } elseif ( $key === 'letter_heading_full_width' ) {
+                $clean[ $key ] = (int) $val ? '1' : '0';
             } else {
                 $clean[ $key ] = max( 0, (int) $val );
             }

@@ -25,6 +25,11 @@ class WPGT_Shortcodes {
     // You can also pass letter="letter-a" explicitly.
     // ------------------------------------------------------------------
     public static function glossary_index( $atts ): string {
+        // Ensure public CSS is always loaded (needed even if enable_tooltips is off)
+        if ( defined('WPGT_PLUGIN_URL') && defined('WPGT_VERSION') ) {
+            wp_enqueue_style( 'wpgt-public', WPGT_PLUGIN_URL . 'public/css/public.css', [], WPGT_VERSION );
+        }
+
         $atts = shortcode_atts( [
             'columns'       => WPGT_Settings::get( 'index_columns', 3 ),
             'show_alphabet' => WPGT_Settings::get( 'show_alphabet_bar', true ) ? 'true' : 'false',
@@ -92,9 +97,17 @@ class WPGT_Shortcodes {
         $current_letter_slug = ( $current_letter_term && ! is_wp_error( $current_letter_term ) )
             ? $current_letter_term->slug
             : '';
-        $current_letter_name = ( $current_letter_term && ! is_wp_error( $current_letter_term ) )
-            ? mb_strtoupper( $current_letter_term->name, 'UTF-8' )
-            : '';
+
+        // Display name: use term name, strip "letter-" prefixes (e.g. "letter-a" → "A")
+        $current_letter_name = '';
+        if ( $current_letter_term && ! is_wp_error( $current_letter_term ) ) {
+            $raw_name = $current_letter_term->name;
+            // If looks like "letter-X" slug was used as name, extract the X part
+            if ( preg_match( '/^letter[-_\s]*(.+)$/iu', $raw_name, $m ) ) {
+                $raw_name = $m[1];
+            }
+            $current_letter_name = mb_strtoupper( $raw_name, 'UTF-8' );
+        }
 
         // Sort letter_urls keys alphabetically for consistent bar order
         ksort( $letter_urls );
@@ -125,8 +138,11 @@ class WPGT_Shortcodes {
                 <p class="wpgt-no-terms"><?php esc_html_e( 'No glossary terms found.', 'wp-glossary-tooltip' ); ?></p>
 
             <?php elseif ( $current_letter_term && ! is_wp_error( $current_letter_term ) ) : ?>
-                <?php // Single-letter view — flat list, no sub-grouping needed ?>
-                <?php echo self::render_flat_list( $posts, $columns ); ?>
+                <?php // Single-letter view — show heading then flat list ?>
+                <section class="wpgt-letter-group" id="wpgt-letter-<?php echo esc_attr( $current_letter_name ); ?>">
+                    <h3 class="wpgt-letter-heading"><?php echo esc_html( $current_letter_name ); ?></h3>
+                    <?php echo self::render_flat_list( $posts, $columns ); ?>
+                </section>
 
             <?php else : ?>
                 <?php // Full glossary — group by first letter ?>
