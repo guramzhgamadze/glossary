@@ -184,7 +184,7 @@ class WPGT_Tooltip_Parser {
             }
             $id    = (int) $term['id'];
             $html .= sprintf(
-                '<span class="wpgt-tooltip-trigger" data-wpgt="%d" data-tooltip="%s" data-title="%s" data-url="%s" tabindex="0" role="term" aria-describedby="wpgt-tip-%d">%s</span>',
+                '<span class="wpgt-tooltip-trigger" data-wpgt="%d" data-tooltip="%s" data-title="%s" data-url="%s" tabindex="0" aria-describedby="wpgt-tip-%d">%s</span>',
                 $id,
                 esc_attr( $term['tooltip'] ),
                 esc_attr( $term['title'] ),

@@ -16,6 +16,8 @@
     var LINK_NEWTAB  = ( cfg.link_new_tab   == '1' || cfg.link_new_tab   === true );
     var BRAND        = cfg.brand_color      || '#2563eb';
     var SEE_MORE_CLR = cfg.see_more_color   || '';
+    var READ_MORE_TXT= cfg.read_more_text   || 'Read more \u2192';
+    
 
     /* Solid background colour per theme — no opacity/blur */
     var BG_COLOR;
@@ -77,7 +79,7 @@
             var attrs = 'href="' + url + '" class="wpgt-tooltip-see-more"';
             if ( LINK_NEWTAB )  attrs += ' target="_blank" rel="noopener noreferrer"';
             if ( SEE_MORE_CLR ) attrs += ' style="color:' + SEE_MORE_CLR + '"';
-            html += '<a ' + attrs + '>Read more \u2192</a>';
+            html += '<a ' + attrs + '>' + escHtml(READ_MORE_TXT) + '</a>';
         }
         b.innerHTML = html;
 
@@ -144,36 +146,213 @@
     }
     window.addEventListener('resize', function(){ if(currentTrigger&&bubble&&bubble.classList.contains('wpgt-visible'))positionBubble(currentTrigger,bubble); });
 
+
     /* ----------------------------------------------------------------
-       Live search widget
+       Live search widget — WAI-ARIA 1.2 combobox pattern
+       Spec: https://www.w3.org/WAI/ARIA/apg/patterns/combobox/
     ---------------------------------------------------------------- */
     function initSearchWidgets() {
-        document.querySelectorAll('.wpgt-search-widget').forEach(function(widget){
-            var input=widget.querySelector('.wpgt-search-input'), results=widget.querySelector('.wpgt-search-results');
-            if(!input||!results)return;
-            var deb;
-            input.addEventListener('input', function(){ clearTimeout(deb); var q=input.value.trim(); if(q.length<2){results.hidden=true;results.innerHTML='';return;} deb=setTimeout(function(){fetchSearch(q,results);},280); });
-            input.addEventListener('keydown', function(e){ if(e.key==='Escape'){results.hidden=true;input.value='';} if(e.key==='ArrowDown'){var f=results.querySelector('.wpgt-search-result-item');if(f){e.preventDefault();f.focus();}} });
-            results.addEventListener('keydown', function(e){ var items=Array.from(results.querySelectorAll('.wpgt-search-result-item')),idx=items.indexOf(document.activeElement); if(e.key==='ArrowDown'&&idx<items.length-1){e.preventDefault();items[idx+1].focus();} if(e.key==='ArrowUp'){e.preventDefault();(idx>0?items[idx-1]:input).focus();} if(e.key==='Escape'){results.hidden=true;input.focus();} });
-            document.addEventListener('click', function(e){ if(!widget.contains(e.target))results.hidden=true; });
-        });
-    }
+        document.querySelectorAll('.wpgt-search-widget').forEach(function(widget) {
+            var input   = widget.querySelector('.wpgt-search-input');
+            var listbox = widget.querySelector('.wpgt-search-results');
+            var clearBtn= widget.querySelector('.wpgt-search-clear');
+            var status  = widget.querySelector('.wpgt-search-status');
+            if (!input || !listbox) return;
 
-    function fetchSearch(q,el){
-        fetch(restUrl+'search?q='+encodeURIComponent(q),{headers:{'X-WP-Nonce':nonce}})
-            .then(function(r){return r.json();}).then(function(data){renderSearchResults(data,el);})
-            .catch(function(){el.innerHTML='<span class="wpgt-search-no-results">Error.</span>';el.hidden=false;});
-    }
-    function renderSearchResults(items,el){
-        el.innerHTML='';
-        if(!items||!items.length){el.innerHTML='<span class="wpgt-search-no-results">No terms found.</span>';el.hidden=false;return;}
-        items.forEach(function(item){
-            var a=document.createElement('a'); a.href=item.url||'#'; a.className='wpgt-search-result-item'; a.setAttribute('role','option');
-            if(LINK_NEWTAB){a.target='_blank';a.rel='noopener noreferrer';}
-            a.innerHTML='<span class="wpgt-search-result-title">'+escHtml(item.title)+'</span><span class="wpgt-search-result-excerpt">'+escHtml(item.tooltip_text)+'</span>';
-            el.appendChild(a);
+            var deb        = null;
+            var activeIdx  = -1;   // index of aria-activedescendant option
+            var currentQ   = '';   // last fetched query
+            var optPrefix  = input.id ? input.id.replace('wpgt-input','wpgt-opt') : 'wpgt-opt-x';
+
+            // ── Helpers ──────────────────────────────────────────────
+            function getOptions() {
+                return Array.from(listbox.querySelectorAll('.wpgt-search-result-item'));
+            }
+
+            function setActive(idx) {
+                var opts = getOptions();
+                // Clear previous
+                opts.forEach(function(o) {
+                    o.classList.remove('wpgt-active');
+                    o.setAttribute('aria-selected', 'false');
+                });
+                if (idx < 0 || idx >= opts.length) {
+                    activeIdx = -1;
+                    input.setAttribute('aria-activedescendant', '');
+                    return;
+                }
+                activeIdx = idx;
+                var target = opts[idx];
+                target.classList.add('wpgt-active');
+                target.setAttribute('aria-selected', 'true');
+                // aria-activedescendant: DOM focus stays on input (WAI-ARIA spec §3.1)
+                input.setAttribute('aria-activedescendant', target.id);
+                // Scroll into view if needed
+                target.scrollIntoView({ block: 'nearest' });
+            }
+
+            function openListbox() {
+                listbox.hidden = false;
+                input.setAttribute('aria-expanded', 'true');
+            }
+
+            function closeListbox() {
+                listbox.hidden = true;
+                input.setAttribute('aria-expanded', 'false');
+                setActive(-1);
+            }
+
+            function setLoading(on) {
+                widget.classList.toggle('wpgt-loading', on);
+            }
+
+            function updateClearBtn() {
+                if (clearBtn) clearBtn.hidden = !input.value;
+            }
+
+            function announce(msg) {
+                if (status) status.textContent = msg;
+            }
+
+            // ── Match highlighting ───────────────────────────────────
+            // <mark> is the semantically correct element for search matches (HTML §4.5.23)
+            function highlightMatch(text, query) {
+                if (!query) return escHtml(text);
+                var ltext = text.toLowerCase();
+                var lq    = query.toLowerCase();
+                var idx   = ltext.indexOf(lq);
+                if (idx === -1) return escHtml(text);
+                return escHtml(text.substring(0, idx))
+                    + '<mark class="wpgt-search-match">'
+                    + escHtml(text.substring(idx, idx + query.length))
+                    + '</mark>'
+                    + escHtml(text.substring(idx + query.length));
+            }
+
+            // ── Render results ───────────────────────────────────────
+            function renderResults(items, q) {
+                listbox.innerHTML = '';
+                activeIdx = -1;
+                input.setAttribute('aria-activedescendant', '');
+
+                if (!items || !items.length) {
+                    var none = document.createElement('span');
+                    none.className = 'wpgt-search-no-results';
+                    none.setAttribute('role', 'option');
+                    none.textContent = wpgtData.i18n ? wpgtData.i18n.noResults : 'No terms found.';
+                    listbox.appendChild(none);
+                    openListbox();
+                    announce(wpgtData.i18n ? wpgtData.i18n.noResults : 'No terms found.');
+                    return;
+                }
+
+                items.forEach(function(item, i) {
+                    var a = document.createElement('a');
+                    // Unique ID per option — required for aria-activedescendant
+                    a.id   = optPrefix + '-' + i;
+                    a.href = item.url || '#';
+                    a.className = 'wpgt-search-result-item';
+                    a.setAttribute('role', 'option');
+                    a.setAttribute('aria-selected', 'false');
+                    // tabindex="-1": focusable programmatically, not in tab order
+                    // (DOM focus stays on input per WAI-ARIA combobox spec)
+                    a.setAttribute('tabindex', '-1');
+                    if (LINK_NEWTAB) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+                    a.innerHTML =
+                        '<span class="wpgt-search-result-title">'   + highlightMatch(item.title || '', q)       + '</span>'
+                      + '<span class="wpgt-search-result-excerpt">' + escHtml(item.tooltip_text || '') + '</span>';
+                    listbox.appendChild(a);
+                });
+
+                openListbox();
+                var count = items.length;
+                announce(count + (count === 1
+                    ? (wpgtData.i18n ? wpgtData.i18n.resultSingular : ' result found.')
+                    : (wpgtData.i18n ? wpgtData.i18n.resultPlural   : ' results found.')));
+            }
+
+            // ── Fetch ────────────────────────────────────────────────
+            function doSearch(q) {
+                currentQ = q;
+                setLoading(true);
+                fetch(restUrl + 'search?q=' + encodeURIComponent(q), { headers: { 'X-WP-Nonce': nonce } })
+                    .then(function(r) {
+                        if (!r.ok) throw new Error('HTTP ' + r.status);
+                        return r.json();
+                    })
+                    .then(function(data) { renderResults(data, q); })
+                    .catch(function() {
+                        listbox.innerHTML = '<span class="wpgt-search-error" role="alert">'
+                            + (wpgtData.i18n ? wpgtData.i18n.error : 'Search error. Please try again.') + '</span>';
+                        openListbox();
+                        announce(wpgtData.i18n ? wpgtData.i18n.error : 'Search error.');
+                    })
+                    .finally(function() { setLoading(false); });
+            }
+
+            // ── Input events ─────────────────────────────────────────
+            input.addEventListener('input', function() {
+                clearTimeout(deb);
+                updateClearBtn();
+                var q = input.value.trim();
+                if (q.length < 2) { closeListbox(); listbox.innerHTML = ''; return; }
+                // 280 ms debounce — balances responsiveness vs network requests
+                deb = setTimeout(function() { doSearch(q); }, 280);
+            });
+
+            // ── Keyboard navigation ──────────────────────────────────
+            // Per WAI-ARIA combobox spec: DOM focus STAYS on input.
+            // Arrow keys move aria-activedescendant; Enter navigates.
+            input.addEventListener('keydown', function(e) {
+                var opts = getOptions().filter(function(o) { return o.classList.contains('wpgt-search-result-item'); });
+
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (listbox.hidden && input.value.trim().length >= 2) { /* re-open if closed */ }
+                    setActive(activeIdx < opts.length - 1 ? activeIdx + 1 : 0);
+                    return;
+                }
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setActive(activeIdx > 0 ? activeIdx - 1 : opts.length - 1);
+                    return;
+                }
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (activeIdx >= 0 && opts[activeIdx]) {
+                        opts[activeIdx].click(); // follows href, respects target="_blank"
+                    }
+                    return;
+                }
+                if (e.key === 'Escape') {
+                    closeListbox();
+                    input.value = '';
+                    updateClearBtn();
+                    announce('');
+                    return;
+                }
+                if (e.key === 'Tab') {
+                    closeListbox();
+                }
+            });
+
+            // ── Clear button ─────────────────────────────────────────
+            if (clearBtn) {
+                clearBtn.addEventListener('click', function() {
+                    input.value = '';
+                    closeListbox();
+                    listbox.innerHTML = '';
+                    updateClearBtn();
+                    announce('');
+                    input.focus();
+                });
+            }
+
+            // ── Click outside to close ───────────────────────────────
+            document.addEventListener('click', function(e) {
+                if (!widget.contains(e.target)) closeListbox();
+            });
         });
-        el.hidden=false;
     }
 
     function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }

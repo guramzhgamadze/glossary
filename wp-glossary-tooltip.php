@@ -3,7 +3,7 @@
  * Plugin Name:       ! Glossary Tooltip
  * Plugin URI:        https://github.com/guramzhgamadze/glossary
  * Description:       A powerful glossary plugin that automatically adds hover tooltips to defined terms throughout your content. Built with full Georgian language support including declension-aware matching.
- * Version:           1.0.7
+ * Version:           2.0.0
  * Author:            Guram Zhgamadze
  * Author URI:        https://github.com/guramzhgamadze
  * License:           GPL v2 or later
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'WPGT_VERSION',     '1.0.7' );
+define( 'WPGT_VERSION',     '2.0.0' );
 define( 'WPGT_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'WPGT_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'WPGT_PLUGIN_FILE', __FILE__ );
@@ -88,11 +88,11 @@ class WP_Glossary_Tooltip {
             true
         );
 
-        // Styles option overrides main settings for all visual properties
-        $brand_color   = $sm['trigger_color']      ?: ( $settings['brand_color']      ?? '#2563eb' );
-        $tooltip_theme = $sm['tooltip_theme']      ?: ( $settings['tooltip_theme']    ?? 'dark'    );
-        $tooltip_bg    = $sm['tooltip_bg']         ?: ( $settings['tooltip_bg_color'] ?? ''        );
-        $see_more_clr  = $sm['tooltip_link_color'] ?: ( $settings['see_more_color']   ?? ''        );
+        // Styles tab is the single source of truth for all visual properties
+        $brand_color   = $sm['trigger_color']      ?: '#2563eb';
+        $tooltip_theme = $sm['tooltip_theme']      ?: ( $settings['tooltip_theme'] ?? 'dark' );
+        $tooltip_bg    = $sm['tooltip_bg']         ?: '';
+        $see_more_clr  = $sm['tooltip_link_color'] ?: '';
 
         wp_localize_script( 'wpgt-public', 'wpgtData', [
             'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
@@ -107,6 +107,14 @@ class WP_Glossary_Tooltip {
                 'brand_color'      => $brand_color,
                 'tooltip_bg_color' => $tooltip_bg,
                 'see_more_color'   => $see_more_clr,
+                'read_more_text'   => ! empty( $sm['tooltip_read_more_text'] ) ? $sm['tooltip_read_more_text'] : 'Read more →',
+            ],
+            // Search widget screen-reader strings — localised via wp_localize_script
+            'i18n' => [
+                'noResults'      => __( 'No terms found.',              'wp-glossary-tooltip' ),
+                'error'          => __( 'Search error. Please try again.', 'wp-glossary-tooltip' ),
+                'resultSingular' => __( ' result found.',               'wp-glossary-tooltip' ),
+                'resultPlural'   => __( ' results found.',              'wp-glossary-tooltip' ),
             ],
         ] );
     }
@@ -142,6 +150,23 @@ class WP_Glossary_Tooltip {
         $sr_shadows   = [ 'none'=>'none','sm'=>'0 1px 3px rgba(0,0,0,.06)','default'=>'0 4px 16px rgba(0,0,0,.12)','lg'=>'0 8px 24px rgba(0,0,0,.18)' ];
 
         $css = '';
+
+        // ── Global font ───────────────────────────────────────────────────────
+        // Resolve: use global_font_family if set, else global_font_custom
+        $font = trim( $s['global_font_family'] ?? '' );
+        if ( ! $font ) $font = trim( $s['global_font_custom'] ?? '' );
+        if ( $font ) {
+            // Load the font from Google Fonts
+            $gfont_url = 'https://fonts.googleapis.com/css2?family='
+                . urlencode( $font )
+                . ':ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap';
+            echo '<link rel="preconnect" href="https://fonts.googleapis.com">' . "\n";
+            echo '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' . "\n";
+            echo '<link rel="stylesheet" href="' . esc_url( $gfont_url ) . '">' . "\n";
+            // Apply to all plugin elements
+            $font_decl = 'font-family:"' . esc_attr( $font ) . '",sans-serif;';
+            $css .= '.wpgt-tooltip-bubble,.wpgt-tooltip-trigger,.wpgt-glossary-index,.wpgt-alphabet-bar,.wpgt-term-item,.wpgt-term-box,.wpgt-search-widget,.wpgt-search-input,.wpgt-search-results{' . $font_decl . '}';
+        }
 
         // ── CSS variable — propagates brand colour to all components that use var(--wpgt-brand) ──
         $brand = $col('trigger_color');
@@ -181,9 +206,22 @@ class WP_Glossary_Tooltip {
         $ts = $shadow_preset( 'tooltip_shadow', $tip_shadows );
         if ( $ts !== '' && ( $s['tooltip_shadow'] ?? '' ) !== 'default' ) $tip['box-shadow'] = $ts;
         $css .= $rule( '.wpgt-tooltip-bubble', $tip );
-        if ( $col('tooltip_title_color') ) $css .= '.wpgt-tooltip-title{color:' . $col('tooltip_title_color') . ';}';
-        if ( $col('tooltip_link_color') )  $css .= '.wpgt-tooltip-see-more{color:' . $col('tooltip_link_color') . ';}';
-
+        // Title and link colour overrides must beat the per-theme rules in public.css
+        // (.wpgt-theme-dark .wpgt-tooltip-title has specificity 0,2,0 vs 0,1,0 for base rule).
+        if ( $col('tooltip_title_color') ) {
+            $tc = $col('tooltip_title_color');
+            $css .= '.wpgt-theme-dark .wpgt-tooltip-title,'
+                  . '.wpgt-theme-light .wpgt-tooltip-title,'
+                  . '.wpgt-theme-branded .wpgt-tooltip-title,'
+                  . '.wpgt-tooltip-title{color:' . $tc . ';}';
+        }
+        if ( $col('tooltip_link_color') ) {
+            $lc = $col('tooltip_link_color');
+            $css .= '.wpgt-theme-dark .wpgt-tooltip-see-more,'
+                  . '.wpgt-theme-light .wpgt-tooltip-see-more,'
+                  . '.wpgt-theme-branded .wpgt-tooltip-see-more,'
+                  . '.wpgt-tooltip-see-more{color:' . $lc . ';}';
+        }
         // ── A-Z bar ────────────────────────────────────────────────────────────
         $az_pv = (int)( $s['az_bar_padding_v'] ?? 10 ); $az_ph = (int)( $s['az_bar_padding_h'] ?? 12 );
         $css .= $rule( '.wpgt-alphabet-bar', [
@@ -205,14 +243,19 @@ class WP_Glossary_Tooltip {
         ]);
         // Active letter (az-current)
         $az_cur_bw  = (int)( $s['az_current_border_width'] ?? 0 );
-        $az_cur_bs  = $s['az_current_border_style'] ?? 'solid';
+        $az_cur_bs  = in_array( $s['az_current_border_style'] ?? 'solid', ['solid','dashed','dotted','none'], true )
+                        ? ( $s['az_current_border_style'] ?? 'solid' ) : 'solid';
         $az_cur_br  = (int)( $s['az_current_border_radius'] ?? 4 );
+        $az_cur_bc  = $col('az_current_border_color');
+        // Build border shorthand — output whenever color is set so it
+        // always beats public.css regardless of property ordering.
+        $az_cur_border = $az_cur_bc
+            ? ( ( $az_cur_bw > 0 ? $az_cur_bw : 1 ) . 'px ' . $az_cur_bs . ' ' . $az_cur_bc )
+            : '';
         $css .= $rule( '.wpgt-az-current', [
             'background'    => $col('az_current_bg'),
             'color'         => $col('az_current_color'),
-            'border-width'  => $az_cur_bw > 0 ? $az_cur_bw . 'px' : '',
-            'border-style'  => ( $az_cur_bw > 0 && in_array( $az_cur_bs, ['solid','dashed','dotted','none'], true ) ) ? $az_cur_bs : '',
-            'border-color'  => $col('az_current_border_color'),
+            'border'        => $az_cur_border,
             'border-radius' => ( $az_cur_br !== 4 ) ? $az_cur_br . 'px' : '',
         ]);
         if ( $col('az_current_hover_bg') || $col('az_current_hover_color') ) {
@@ -310,27 +353,49 @@ class WP_Glossary_Tooltip {
         $si_pv = (int)($s['search_input_padding_v']??10); $si_ph = (int)($s['search_input_padding_h']??16);
         $sr_pv = (int)($s['search_result_padding_v']??10); $sr_ph = (int)($s['search_result_padding_h']??14);
         $srs   = $shadow_preset( 'search_results_shadow', $sr_shadows );
+        $smw   = (int)($s['search_max_width']??480);
+        $srh   = (int)($s['search_results_max_height']??320);
+
+        if ( $smw !== 480 ) $css .= '.wpgt-search-widget{max-width:' . $smw . 'px;}';
+        if ( $srh !== 320 ) $css .= '.wpgt-search-results{max-height:' . $srh . 'px;}';
+
         $css .= $rule( '.wpgt-search-input', [
             'border-color'  => $col('search_input_border'),
             'border-radius' => $px('search_input_radius'),
             'font-size'     => $px('search_input_size'),
-            'padding'       => ( $si_pv !== 10 || $si_ph !== 16 ) ? $si_pv.'px '.$si_ph.'px' : '',
+            'background'    => $col('search_input_bg'),
+            'color'         => $col('search_input_text_color'),
+            'padding'       => ( $si_pv !== 10 || $si_ph !== 16 ) ? $si_pv.'px 38px '.$si_pv.'px 38px' : '',
         ]);
+        // Focus ring uses chosen colour with 20% opacity for the glow
         $focus = $col('search_input_focus');
-        if ( $focus ) $css .= '.wpgt-search-input:focus{border-color:'.$focus.';box-shadow:0 0 0 3px '.$focus.'40;}';
+        if ( $focus ) $css .= '.wpgt-search-input:focus{border-color:'.$focus.';box-shadow:0 0 0 3px '.$focus.'33;}';
+        if ( $focus ) $css .= '.wpgt-search-input[aria-expanded="true"]{border-color:'.$focus.';}';
+
+        // Icon + clear button colours
+        if ( $col('search_icon_color') )  $css .= '.wpgt-search-icon{color:' . $col('search_icon_color') . ';}';
+        if ( $col('search_clear_color') ) $css .= '.wpgt-search-clear{color:' . $col('search_clear_color') . ';}';
+
         $css .= $rule( '.wpgt-search-results', [
             'background'    => $col('search_results_bg'),
             'border-radius' => $px('search_results_radius'),
             'box-shadow'    => $srs,
+            'border-color'  => $col('search_input_border'), // match input border
         ]);
-        $css .= $rule( '.wpgt-search-result-item:hover,.wpgt-search-result-item:focus', [
+        $css .= $rule( '.wpgt-search-result-item:hover,.wpgt-search-result-item.wpgt-active', [
             'background' => $col('search_result_hover_bg'),
+            'color'      => $col('search_result_hover_color'),
         ]);
         $css .= $rule( '.wpgt-search-result-item', [
-            'padding' => ( $sr_pv !== 10 || $sr_ph !== 14 ) ? $sr_pv.'px '.$sr_ph.'px' : '',
+            'color'         => $col('search_result_text'),
+            'border-bottom-color' => $col('search_separator_color'),
+            'padding'       => ( $sr_pv !== 10 || $sr_ph !== 14 ) ? $sr_pv.'px '.$sr_ph.'px' : '',
         ]);
         $css .= $rule( '.wpgt-search-result-title',   ['color' => $col('search_result_title')]   );
         $css .= $rule( '.wpgt-search-result-excerpt', ['color' => $col('search_result_excerpt')] );
+        if ( $col('search_match_color') )     $css .= '.wpgt-search-match{color:' . $col('search_match_color') . ';}';
+        if ( $col('search_noresults_color') ) $css .= '.wpgt-search-no-results{color:' . $col('search_noresults_color') . ';}';
+
 
         if ( $css ) {
             echo '<style id="wpgt-style-overrides">' . $css . '</style>' . "\n";

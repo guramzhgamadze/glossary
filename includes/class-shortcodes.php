@@ -307,15 +307,91 @@ class WPGT_Shortcodes {
             'placeholder' => __( 'Search glossary…', 'wp-glossary-tooltip' ),
         ], $atts, 'wpgt_search' );
 
+        // Unique IDs per widget instance — required for aria-controls / aria-activedescendant
+        static $instance = 0;
+        $instance++;
+        $input_id   = 'wpgt-input-'   . $instance;
+        $listbox_id = 'wpgt-listbox-' . $instance;
+        $status_id  = 'wpgt-status-'  . $instance;
+
         ob_start();
         ?>
         <div class="wpgt-search-widget">
-            <input type="search" class="wpgt-search-input"
-                   placeholder="<?php echo esc_attr( $atts['placeholder'] ); ?>"
-                   aria-label="<?php esc_attr_e( 'Search glossary terms', 'wp-glossary-tooltip' ); ?>"
-                   autocomplete="off" />
-            <div class="wpgt-search-results" role="listbox"
-                 aria-label="<?php esc_attr_e( 'Search results', 'wp-glossary-tooltip' ); ?>" hidden></div>
+
+            <?php /* Input row: search icon + input + clear button — all in one focusable wrapper */ ?>
+            <div class="wpgt-search-combobox">
+
+                <?php /* Magnifying-glass icon — aria-hidden, decorative only */ ?>
+                <span class="wpgt-search-icon" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" focusable="false">
+                        <circle cx="8.5" cy="8.5" r="6" stroke="currentColor" stroke-width="1.75"/>
+                        <path d="M13.5 13.5L18 18" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+                    </svg>
+                </span>
+
+                <?php /*
+                 * WAI-ARIA 1.2 Combobox pattern:
+                 * role="combobox" + aria-expanded + aria-autocomplete="list"
+                 * + aria-haspopup="listbox" + aria-controls pointing to the listbox.
+                 * aria-activedescendant is set by JS as keyboard nav moves through options.
+                 * DOM focus stays on this input at ALL times (spec §3.1).
+                 */ ?>
+                <input
+                    type="search"
+                    id="<?php echo esc_attr( $input_id ); ?>"
+                    class="wpgt-search-input"
+                    role="combobox"
+                    aria-expanded="false"
+                    aria-autocomplete="list"
+                    aria-haspopup="listbox"
+                    aria-controls="<?php echo esc_attr( $listbox_id ); ?>"
+                    aria-activedescendant=""
+                    placeholder="<?php echo esc_attr( $atts['placeholder'] ); ?>"
+                    aria-label="<?php esc_attr_e( 'Search glossary terms', 'wp-glossary-tooltip' ); ?>"
+                    autocomplete="off"
+                    spellcheck="false"
+                />
+
+                <?php /* Clear button — hidden until user types; JS shows/hides */ ?>
+                <button
+                    class="wpgt-search-clear"
+                    type="button"
+                    aria-label="<?php esc_attr_e( 'Clear search', 'wp-glossary-tooltip' ); ?>"
+                    hidden
+                >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" focusable="false" aria-hidden="true">
+                        <path d="M1 1L11 11M11 1L1 11" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+                    </svg>
+                </button>
+
+            </div>
+
+            <?php /*
+             * Listbox popup — role="listbox".
+             * Options injected by JS as <a role="option" id="wpgt-opt-N-M">.
+             * `hidden` removed by JS when results arrive; aria-expanded on input mirrors this.
+             */ ?>
+            <div
+                id="<?php echo esc_attr( $listbox_id ); ?>"
+                class="wpgt-search-results"
+                role="listbox"
+                aria-label="<?php esc_attr_e( 'Search results', 'wp-glossary-tooltip' ); ?>"
+                hidden
+            ></div>
+
+            <?php /*
+             * Live region — screen readers announce result count after fetch.
+             * aria-live="polite" + aria-atomic="true" per WAI-ARIA spec §6.6.
+             * Visually hidden with .wpgt-sr-only.
+             */ ?>
+            <div
+                id="<?php echo esc_attr( $status_id ); ?>"
+                class="wpgt-search-status wpgt-sr-only"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+            ></div>
+
         </div>
         <?php
         return ob_get_clean();

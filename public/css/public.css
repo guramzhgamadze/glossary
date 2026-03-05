@@ -38,6 +38,24 @@
 }
 
 /* -------------------------------------------------------
+   Font inheritance fix
+   position:fixed breaks the font inheritance chain,
+   so we explicitly re-inherit the site font on every
+   plugin element so it never falls back to browser default.
+------------------------------------------------------- */
+.wpgt-tooltip-bubble,
+.wpgt-tooltip-trigger,
+.wpgt-glossary-index,
+.wpgt-alphabet-bar,
+.wpgt-term-item,
+.wpgt-term-box,
+.wpgt-search-widget,
+.wpgt-search-input,
+.wpgt-search-results {
+    font-family: inherit;
+}
+
+/* -------------------------------------------------------
    Tooltip bubble — position:fixed so it escapes
    any Elementor stacking context. JS sets top/left.
 ------------------------------------------------------- */
@@ -187,12 +205,15 @@
     color: #fff;
     outline: none;
 }
-/* Current letter — non-clickable, visually distinct */
-span.wpgt-az-current {
+/* Current letter — non-clickable, visually distinct.
+   Class-only selector (specificity 0,1,0) so override CSS wins. */
+.wpgt-az-current {
     background: transparent;
     color: #94a3b8;
     cursor: default;
-    border: 1px solid #e2e8f0;
+    border-color: #e2e8f0;
+    border-width: 1px;
+    border-style: solid;
 }
 
 /* -------------------------------------------------------
@@ -291,49 +312,178 @@ span.wpgt-az-current {
 /* -------------------------------------------------------
    Search widget – [wpgt_search]
 ------------------------------------------------------- */
-.wpgt-search-widget { position: relative; max-width: 480px; }
+
+/* Visually-hidden utility — for screen-reader-only elements.
+   This is the standard pattern per WebAIM / WAI-ARIA. */
+.wpgt-sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.wpgt-search-widget {
+    position: relative;
+    max-width: 480px;
+}
+
+/* ── Input row: icon + input + clear button ── */
+.wpgt-search-combobox {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+/* Magnifying glass — absolute-positioned left of input */
+.wpgt-search-icon {
+    position: absolute;
+    left: 13px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+    transition: color 0.15s;
+    z-index: 1;
+}
+.wpgt-search-widget.wpgt-loading .wpgt-search-icon svg {
+    animation: wpgt-spin 0.65s linear infinite;
+}
+@keyframes wpgt-spin { to { transform: rotate(360deg); } }
+
 .wpgt-search-input {
     width: 100%;
-    padding: 10px 16px;
+    padding: 10px 38px 10px 38px; /* left space for icon, right space for clear */
     font-size: 0.9375rem;
     border: 1.5px solid #d1d5db;
     border-radius: 6px;
+    background: #fff;
+    color: #1e293b;
     transition: border-color 0.15s, box-shadow 0.15s;
     box-sizing: border-box;
+    /* Remove browser-default 'x' clear button — we supply our own */
+    -webkit-appearance: none;
 }
+.wpgt-search-input::-webkit-search-cancel-button { display: none; }
 .wpgt-search-input:focus {
     outline: none;
     border-color: var(--wpgt-brand);
     box-shadow: 0 0 0 3px rgba(37,99,235,.15);
 }
+/* When results are open, square the bottom corners to visually connect to dropdown */
+.wpgt-search-input[aria-expanded="true"] {
+    border-bottom-left-radius:  0;
+    border-bottom-right-radius: 0;
+    border-bottom-color: transparent;
+}
+
+/* Clear (×) button — shown by JS when input has text */
+.wpgt-search-clear {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    padding: 0;
+    transition: color 0.12s, background 0.12s;
+    z-index: 1;
+}
+.wpgt-search-clear:hover { color: #1e293b; background: #f1f5f9; }
+.wpgt-search-clear:focus-visible { outline: 2px solid var(--wpgt-brand); outline-offset: 1px; }
+.wpgt-search-clear[hidden] { display: none; }
+
+/* ── Results dropdown ── */
 .wpgt-search-results {
     position: absolute;
-    top: calc(100% + 6px);
+    top: 100%;
     left: 0;
     right: 0;
     background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    box-shadow: var(--wpgt-shadow);
+    border: 1.5px solid #d1d5db;
+    border-top: none;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.12);
     max-height: 320px;
     overflow-y: auto;
     z-index: 9999;
+    /* Subtle entrance animation */
+    animation: wpgt-dropdown-in 0.12s ease;
 }
+@keyframes wpgt-dropdown-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Result items ── */
 .wpgt-search-result-item {
     display: block;
     padding: 10px 14px;
     text-decoration: none;
     color: #1e293b;
     border-bottom: 1px solid #f1f5f9;
-    transition: background 0.12s;
+    transition: background 0.1s, color 0.1s;
+    cursor: pointer;
 }
 .wpgt-search-result-item:last-child { border-bottom: none; }
+
+/* Hover AND keyboard-active state (aria-activedescendant target gets .wpgt-active) */
 .wpgt-search-result-item:hover,
-.wpgt-search-result-item:focus {
+.wpgt-search-result-item.wpgt-active {
     background: #f0f7ff;
     color: var(--wpgt-brand);
     outline: none;
 }
-.wpgt-search-result-title  { display: block; font-weight: 600; font-size: 0.9rem; }
-.wpgt-search-result-excerpt { display: block; font-size: 0.8rem; color: #64748b; margin-top: 2px; }
-.wpgt-search-no-results { padding: 10px 14px; color: #94a3b8; font-size: 0.875rem; }
+
+.wpgt-search-result-title  {
+    display: block;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+.wpgt-search-result-excerpt {
+    display: block;
+    font-size: 0.8rem;
+    color: #64748b;
+    margin-top: 2px;
+    /* Clamp excerpt to 2 lines */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+/* Match highlight — <mark> is semantically correct for search matches (HTML spec §4.5.23) */
+.wpgt-search-match {
+    background: transparent;
+    color: inherit;
+    font-weight: 700;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+}
+
+.wpgt-search-no-results {
+    display: block;
+    padding: 14px 16px;
+    color: #94a3b8;
+    font-size: 0.875rem;
+    text-align: center;
+}
+.wpgt-search-error {
+    display: block;
+    padding: 14px 16px;
+    color: #ef4444;
+    font-size: 0.875rem;
+    text-align: center;
+}

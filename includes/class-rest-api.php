@@ -55,7 +55,10 @@ class WPGT_REST_API {
                 'q' => [
                     'required'          => true,
                     'sanitize_callback' => 'sanitize_text_field',
-                    'validate_callback' => fn( $v ) => strlen( $v ) >= 2,
+                    // validate_callback runs on the RAW value before sanitize_callback.
+                    // strlen() counts bytes, not characters — Georgian chars are 3 bytes each.
+                    // mb_strlen() correctly counts Unicode characters.
+                    'validate_callback' => fn( $v ) => mb_strlen( $v, 'UTF-8' ) >= 2,
                 ],
             ],
         ] );
@@ -101,14 +104,44 @@ class WPGT_REST_API {
     }
 
     public static function search_terms( WP_REST_Request $request ): WP_REST_Response {
-        $q     = $request->get_param( 'q' );
+        $q = $request->get_param( 'q' );
+
+        global $wpdb;
+
+        // WordPress 's' parameter requires a FULLTEXT index which fails on many shared hosts.
+        // Direct LIKE on post_title is reliable for all scripts including Georgian UTF-8.
+        // Pattern per docs: esc_like() first, then pass the full LIKE string as a %s placeholder.
+        // See: https://developer.wordpress.org/reference/classes/wpdb/prepare/
+        $like = '%' . $wpdb->esc_like( $q ) . '%';
+        $ids  = $wpdb->get_col( $wpdb->prepare(
+            "SELECT ID FROM {$wpdb->posts}
+             WHERE post_type = %s
+               AND post_status = 'publish'
+               AND post_title LIKE %s
+             ORDER BY post_title ASC
+             LIMIT 10",
+            WPGT_Post_Type::POST_TYPE,
+            $like
+        ) );
+
+        // $wpdb->get_col() never throws — it returns null/false and stores the
+        // error in $wpdb->last_error. try/catch cannot catch wpdb failures.
+        if ( $wpdb->last_error || ! $ids ) {
+            return new WP_REST_Response( [], 200 );
+        }
+
+        // Fetch all matched posts in ONE query using post__in, not N individual get_post() calls.
         $posts = get_posts( [
-            'post_type'      => WPGT_Post_Type::POST_TYPE,
-            'post_status'    => 'publish',
-            'posts_per_page' => 10,
-            's'              => $q,
-            'orderby'        => 'relevance',
+            'post_type'              => WPGT_Post_Type::POST_TYPE,
+            'post_status'            => 'publish',
+            'post__in'               => $ids,
+            'orderby'                => 'post__in', // preserve the ORDER BY post_title ASC from SQL
+            'posts_per_page'         => count( $ids ),
+            'no_found_rows'          => true,
+            'ignore_sticky_posts'    => true,
+            'update_post_term_cache' => false,
         ] );
+
         return new WP_REST_Response( array_map( [ __CLASS__, 'format_term' ], $posts ), 200 );
     }
 
@@ -128,7 +161,6 @@ class WPGT_REST_API {
             'title'        => $post->post_title,
             'slug'         => $post->post_name,
             'tooltip_text' => $tooltip_text,
-            'content'      => apply_filters( 'the_content', $post->post_content ),
             'excerpt'      => $post->post_excerpt,
             'url'          => get_permalink( $post->ID ),
             'synonyms'     => $synonyms ? array_map( 'trim', explode( ',', $synonyms ) ) : [],
