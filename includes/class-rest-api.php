@@ -80,7 +80,7 @@ class WPGT_REST_API {
 
         if ( $category ) {
             $args['tax_query'] = [ [
-                'taxonomy' => WPGT_Post_Type::TAXONOMY,
+                'taxonomy' => WPGT_Post_Type::LETTER_TAX,
                 'field'    => 'slug',
                 'terms'    => $category,
             ] ];
@@ -95,7 +95,7 @@ class WPGT_REST_API {
         return $response;
     }
 
-    public static function get_single_term( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+    public static function get_single_term( WP_REST_Request $request ) { // WP_REST_Response|WP_Error — union type requires PHP 8.0; omitted for 7.4 compatibility
         $post = get_post( $request->get_param( 'id' ) );
         if ( ! $post || $post->post_type !== WPGT_Post_Type::POST_TYPE || $post->post_status !== 'publish' ) {
             return new WP_Error( 'not_found', __( 'Term not found.', 'wp-glossary-tooltip' ), [ 'status' => 404 ] );
@@ -153,7 +153,7 @@ class WPGT_REST_API {
                 : wp_trim_words( strip_tags( $post->post_content ), 25 );
         }
 
-        $categories = wp_get_post_terms( $post->ID, WPGT_Post_Type::TAXONOMY, [ 'fields' => 'names' ] );
+        $categories = wp_get_post_terms( $post->ID, WPGT_Post_Type::LETTER_TAX, [ 'fields' => 'names' ] );
         $synonyms   = get_post_meta( $post->ID, '_wpgt_synonyms', true );
 
         return [

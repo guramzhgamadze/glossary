@@ -3,20 +3,38 @@
  * Plugin Name:       ! Glossary Tooltip
  * Plugin URI:        https://github.com/guramzhgamadze/glossary
  * Description:       A powerful glossary plugin that automatically adds hover tooltips to defined terms throughout your content. Built with full Georgian language support including declension-aware matching.
- * Version:           2.0.0
+ * Version:           2.0.1
  * Author:            Guram Zhgamadze
  * Author URI:        https://github.com/guramzhgamadze
  * License:           GPL v2 or later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       wp-glossary-tooltip
  * Domain Path:       /languages
+ * Requires PHP:      7.4
+ * Requires at least: 6.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'WPGT_VERSION',     '2.0.0' );
+// Runtime PHP version gate.
+// Arrow functions (fn) require PHP 7.4. Without this gate an old PHP version
+// causes a silent parse error = white screen / 500 on every page.
+if ( version_compare( PHP_VERSION, '7.4', '<' ) ) {
+    add_action( 'admin_notices', static function () {
+        printf(
+            '<div class="notice notice-error"><p>%s</p></div>',
+            sprintf(
+                esc_html__( 'WP Glossary Tooltip requires PHP 7.4 or higher. You are running PHP %s. Please upgrade PHP or contact your host.', 'wp-glossary-tooltip' ),
+                esc_html( PHP_VERSION )
+            )
+        );
+    } );
+    return; // Stop loading — prevents fatal errors on old PHP
+}
+
+define( 'WPGT_VERSION',     '2.0.1' );
 define( 'WPGT_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'WPGT_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'WPGT_PLUGIN_FILE', __FILE__ );
@@ -29,6 +47,20 @@ require_once WPGT_PLUGIN_DIR . 'includes/class-tooltip-parser.php';
 require_once WPGT_PLUGIN_DIR . 'includes/class-shortcodes.php';
 require_once WPGT_PLUGIN_DIR . 'includes/class-rest-api.php';
 require_once WPGT_PLUGIN_DIR . 'admin/class-admin.php';
+
+/**
+ * REST API compatibility — remove third-party shutdown hooks that call
+ * wp_parse_auth_cookie() / wp_get_session_token(), which are not available
+ * during REST requests and cause a fatal error that returns a 500.
+ *
+ * Known offenders: Microsoft Clarity (clarity-server-analytics.php).
+ * The filter fires before any REST route is dispatched, so our JSON
+ * response is guaranteed to be sent cleanly.
+ */
+add_filter( 'rest_pre_dispatch', static function ( $result ) {
+    remove_action( 'shutdown', 'clarity_collect_event' );
+    return $result;
+} );
 
 /**
  * Main plugin class.
@@ -90,7 +122,7 @@ class WP_Glossary_Tooltip {
 
         // Styles tab is the single source of truth for all visual properties
         $brand_color   = $sm['trigger_color']      ?: '#2563eb';
-        $tooltip_theme = $sm['tooltip_theme']      ?: ( $settings['tooltip_theme'] ?? 'dark' );
+        $tooltip_theme = ( $sm['tooltip_theme'] ?? '' ) ?: ( $settings['tooltip_theme'] ?? 'dark' );
         $tooltip_bg    = $sm['tooltip_bg']         ?: '';
         $see_more_clr  = $sm['tooltip_link_color'] ?: '';
 
