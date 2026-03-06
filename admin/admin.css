@@ -1,52 +1,318 @@
-/* WP Glossary Tooltip – Admin Styles */
-.wpgt-settings-wrap { max-width: 1200px; }
-.wpgt-settings-wrap h1 { margin-bottom: 20px; }
+/* ═══════════════════════════════════════════════════════════════
+   WP Glossary Tooltip — Admin CSS  v2.0.3
+   
+   POSITIONING (leaves ALL WP chrome 100% untouched):
+   • .wpgt-topbar   → fixed, top:32px left:160px  (below WP adminbar, right of sidebar)
+   • .wpgt-tab-panel → fixed, top:80px left:160px  (32+48)
+   • .wrap.wpgt-settings-wrap → height:0 (invisible anchor, zero layout impact)
+   • body.folded → left:36px for collapsed sidebar
+   • WP adminbar z-index is 99999 — ours are 9980/9990, so WP chrome always on top
+═══════════════════════════════════════════════════════════════ */
 
-.wpgt-tabs { margin-bottom: 0; border-bottom: 1px solid #c3c4c7; }
-
-.wpgt-tab-content {
-    background: #fff;
-    border: 1px solid #c3c4c7;
-    border-top: none;
-    padding: 20px 24px;
-    margin-bottom: 20px;
+/* ─── Design tokens ──────────────────────────────────────────── */
+:root {
+    --g-accent:    #4054b2;
+    --g-accent-dk: #354299;
+    --g-accent-lt: #eef0fb;
+    --g-white:     #ffffff;
+    --g-bg:        #f0f0f1;
+    --g-border:    #e0e0e0;
+    --g-border-lt: #f0f0f1;
+    --g-text:      #1e1e1e;
+    --g-text-sm:   #555555;
+    --g-muted:     #8a8a8a;
+    --g-input-bg:  #f9f9f9;
+    --g-input-bd:  #d5d5d5;
+    --g-topbar-h:  48px;
+    --g-shadow-sm: 0 1px 4px rgba(0,0,0,.07);
+    --g-shadow-md: 0 2px 12px rgba(0,0,0,.08);
+    --g-radius:    8px;
 }
 
-.wpgt-tab-content .form-table th {
-    width: 240px;
-    padding: 16px 10px 16px 0;
+/* ─── Zero-height anchor — no layout impact ──────────────────── */
+.wrap.wpgt-settings-wrap {
+    height: 0 !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    max-width: none !important;
 }
 
-/* Styles tab has its own tighter table layout — override the above */
-#wpgt-tab-styles .wpgt-style-table th {
-    width: 190px;
-    padding: 6px 10px 6px 0;
-}
-#wpgt-tab-styles .wpgt-style-table td {
-    padding: 5px 10px 5px 0;
+/* ═══════════════════════════════════════════════════════════════
+   TOP BAR  (fixed, below WP adminbar, right of WP sidebar)
+═══════════════════════════════════════════════════════════════ */
+.wpgt-topbar {
+    position: fixed;
+    top:    32px;   /* WP admin bar is always 32px tall */
+    left:   160px;  /* WP sidebar normal width */
+    right:  0;
+    height: var(--g-topbar-h);
+    z-index: 9990;  /* WP adminbar is 99999 — stays above ours */
+    display: flex;
+    align-items: stretch;
+    background: var(--g-white);
+    border-bottom: 1px solid var(--g-border);
+    box-shadow: var(--g-shadow-sm);
 }
 
-.wpgt-shortcode-help {
-    background: #f6f7f7;
-    border-left: 4px solid #2563eb;
-    padding: 16px 20px;
-    margin-top: 24px;
-    border-radius: 2px;
+/* Collapsed sidebar */
+body.folded .wpgt-topbar { left: 36px; }
+
+.wpgt-topbar-brand {
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 7px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--g-text);
+    border-right: 1px solid var(--g-border);
+    white-space: nowrap;
+    flex-shrink: 0;
 }
-.wpgt-shortcode-help dt {
+
+.wpgt-topbar nav {
+    display: flex;
+    align-items: stretch;
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+}
+.wpgt-topbar nav::-webkit-scrollbar { display: none; }
+
+.wpgt-topbar nav a.wpgt-tab-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: var(--g-topbar-h);
+    padding: 0 16px;
+    font-size: 0.79rem;
+    font-weight: 500;
+    color: var(--g-text-sm);
+    text-decoration: none !important;
+    border: none;
+    border-bottom: 3px solid transparent;
+    background: transparent;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color .12s, border-color .12s, background .12s;
+    outline: none;
+}
+.wpgt-topbar nav a.wpgt-tab-link:hover {
+    color: var(--g-accent);
+    background: var(--g-accent-lt);
+}
+.wpgt-topbar nav a.wpgt-tab-link.wpgt-active {
+    color: var(--g-accent);
+    border-bottom-color: var(--g-accent);
     font-weight: 600;
-    margin-top: 12px;
-}
-.wpgt-shortcode-help dd {
-    margin-left: 16px;
-    color: #555;
 }
 
-.wpgt-meta-wrap .form-table th { width: 200px; }
+.wpgt-topbar-saved {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #2e7d32;
+    background: #f0faf0;
+    border-left: 1px solid #c8e6c9;
+}
 
-/* Color picker swatch */
-.wp-color-result { border-radius: 3px !important; }
+/* ═══════════════════════════════════════════════════════════════
+   TAB PANELS  (fill the space below our topbar)
+═══════════════════════════════════════════════════════════════ */
+.wpgt-tab-panel {
+    position: fixed;
+    top:    80px;   /* 32px WP adminbar + 48px our topbar */
+    left:   160px;  /* WP sidebar normal width */
+    right:  0;
+    bottom: 0;
+    z-index: 9980;
+    display: none;
+    background: var(--g-bg);
+    overflow: hidden;
+}
+.wpgt-tab-panel.wpgt-active {
+    display: flex;
+    flex-direction: column;
+}
 
-/* List table columns */
+/* Collapsed sidebar */
+body.folded .wpgt-tab-panel { left: 36px; }
+
+/* ─── Scrollable content area ────────────────────────────────── */
+.wpgt-panel-body {
+    flex: 1;
+    min-height: 0;          /* required for flex children to scroll */
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 28px 40px 24px;
+    box-sizing: border-box;
+}
+
+/* ─── Settings card ──────────────────────────────────────────── */
+.wpgt-panel-card {
+    background: var(--g-white);
+    border: 1px solid var(--g-border);
+    border-radius: var(--g-radius);
+    padding: 26px 30px;
+    max-width: 820px;
+    width: 100%;
+    margin: 0 auto 20px;
+    box-shadow: var(--g-shadow-md);
+}
+.wpgt-panel-card > h3 {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--g-text);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin: 0 0 18px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--g-border-lt);
+}
+
+/* ─── Form tables ────────────────────────────────────────────── */
+.wpgt-panel-card .form-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+}
+.wpgt-panel-card .form-table th {
+    width: 210px;
+    padding: 12px 18px 12px 0;
+    font-size: 0.81rem;
+    font-weight: 600;
+    color: var(--g-text);
+    vertical-align: top;
+    border-bottom: 1px solid var(--g-border-lt);
+}
+.wpgt-panel-card .form-table td {
+    padding: 10px 0;
+    font-size: 0.81rem;
+    color: #333;
+    border-bottom: 1px solid var(--g-border-lt);
+    vertical-align: top;
+}
+.wpgt-panel-card .form-table tr:last-child th,
+.wpgt-panel-card .form-table tr:last-child td { border-bottom: none; }
+.wpgt-panel-card .form-table p.description {
+    font-size: 0.76rem;
+    color: var(--g-muted);
+    margin: 4px 0 0;
+    line-height: 1.5;
+}
+.wpgt-panel-card .form-table label {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 7px;
+    font-size: 0.81rem;
+    cursor: pointer;
+    line-height: 1.4;
+}
+
+/* ─── Inputs & selects ───────────────────────────────────────── */
+.wpgt-panel-card input[type="text"],
+.wpgt-panel-card input[type="number"],
+.wpgt-panel-card select {
+    border: 1px solid var(--g-input-bd);
+    border-radius: 5px;
+    background: var(--g-input-bg);
+    color: var(--g-text);
+    font-size: 0.81rem;
+    padding: 6px 10px;
+    min-width: 200px;
+}
+.wpgt-panel-card input[type="text"]:focus,
+.wpgt-panel-card select:focus {
+    border-color: var(--g-accent);
+    box-shadow: 0 0 0 2px rgba(64,84,178,.15);
+    outline: none;
+}
+
+/* ─── Save bar — always at bottom (flex sibling of panel-body) ── */
+.wpgt-panel-savebar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 40px;
+    background: var(--g-white);
+    border-top: 1px solid var(--g-border);
+    box-shadow: 0 -2px 8px rgba(0,0,0,.06);
+    max-width: none;
+    margin-top: auto;
+}
+.wpgt-panel-savebar .button-primary {
+    background: var(--g-accent) !important;
+    border-color:  var(--g-accent) !important;
+    color: #fff !important;
+    font-weight: 600 !important;
+    font-size: 0.81rem !important;
+    border-radius: 5px !important;
+    padding: 7px 20px !important;
+    height: auto !important;
+    line-height: 1.4 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+}
+.wpgt-panel-savebar .button-primary:hover {
+    background: var(--g-accent-dk) !important;
+    border-color:  var(--g-accent-dk) !important;
+}
+.wpgt-panel-savebar .button-secondary {
+    background: transparent !important;
+    border-color: var(--g-input-bd) !important;
+    color: var(--g-muted) !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    border-radius: 5px !important;
+    font-size: 0.81rem !important;
+}
+
+/* ─── Shortcode help box ─────────────────────────────────────── */
+.wpgt-shortcode-help {
+    background: #f5f7ff;
+    border-left: 4px solid var(--g-accent);
+    padding: 16px 20px;
+    margin-top: 20px;
+    border-radius: 0 6px 6px 0;
+}
+.wpgt-shortcode-help h3 {
+    font-size: 0.81rem;
+    font-weight: 700;
+    margin: 0 0 8px;
+    padding: 0;
+    border: none;
+    text-transform: none;
+}
+.wpgt-shortcode-help dt { font-weight: 700; font-size: 0.81rem; color: var(--g-text); margin-top: 8px; }
+.wpgt-shortcode-help dd { margin-left: 14px; font-size: 0.78rem; color: var(--g-text-sm); }
+
+/* ─── Inline notices ─────────────────────────────────────────── */
+.wpgt-notice { padding: 10px 16px; border-radius: 5px; font-size: 0.8rem; font-weight: 500; }
+.wpgt-notice-success { background: #f0faf0; border: 1px solid #c8e6c9; color: #2e7d32; }
+
+/* ─── Import/Export page body text ──────────────────────────── */
+.wpgt-panel-card p { font-size: 0.81rem; color: var(--g-text-sm); margin: 0 0 12px; line-height: 1.5; }
+.wpgt-panel-card p:last-child { margin-bottom: 0; }
+
+/* ─── Styles tab (no padding, fills panel absolutely) ────────── */
+#wpgt-panel-styles {
+    padding: 0 !important;
+    background: #f0f0f1;
+}
+
+/* ─── WP list-table columns ──────────────────────────────────── */
 .column-wpgt_tooltip  { width: 30%; }
 .column-wpgt_synonyms { width: 20%; }
+
+/* ─── WP color picker ────────────────────────────────────────── */
+.wp-color-result { border-radius: 4px !important; }
+
+/* ─── Suppress legacy tab markup ────────────────────────────── */
+.wpgt-tab-content { display: none !important; }

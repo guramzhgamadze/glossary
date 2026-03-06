@@ -63,6 +63,9 @@ class WPGT_Admin {
     // ------------------------------------------------------------------
     // Enqueue admin assets (only on our pages)
     // ------------------------------------------------------------------
+    // ------------------------------------------------------------------
+    // Enqueue admin assets
+    // ------------------------------------------------------------------
     public static function enqueue_assets( string $hook ) {
         $screen = get_current_screen();
         if ( ! $screen ) return;
@@ -82,12 +85,14 @@ class WPGT_Admin {
         wp_enqueue_script(
             'wpgt-admin',
             WPGT_PLUGIN_URL . 'admin/admin.js',
-            [ 'jquery', 'wp-color-picker' ],
+            [ 'jquery', 'wp-color-picker', 'jquery-ui-sortable' ],
             WPGT_VERSION,
             true
         );
+        wp_localize_script( 'wpgt-admin', 'wpgtAdmin', [
+            'sortNonce' => wp_create_nonce( 'wpgt_save_order' ),
+        ] );
         wp_enqueue_style( 'wp-color-picker' );
-        wp_enqueue_script( 'jquery-ui-sortable' );
 
     }
 
@@ -263,436 +268,295 @@ class WPGT_Admin {
     public static function render_settings_page() {
         if ( ! current_user_can( 'manage_options' ) ) return;
 
-        $settings     = WPGT_Settings::get_all();
-        $post_types   = get_post_types( [ 'public' => true ], 'objects' );
-        $saved_notice = isset( $_GET['wpgt_saved'] );
+        $settings   = WPGT_Settings::get_all();
+        $post_types = get_post_types( [ 'public' => true ], 'objects' );
+        $saved      = isset( $_GET['wpgt_saved'] );
         ?>
         <div class="wrap wpgt-settings-wrap">
-            <h1><?php esc_html_e( 'WP Glossary Tooltip — Settings', 'wp-glossary-tooltip' ); ?></h1>
 
-            <?php if ( $saved_notice ) : ?>
-            <div class="notice notice-success is-dismissible">
-                <p><?php esc_html_e( 'Settings saved.', 'wp-glossary-tooltip' ); ?></p>
-            </div>
+        <!-- TOPBAR ──────────────────────────────────────────────── -->
+        <div class="wpgt-topbar">
+            <div class="wpgt-topbar-brand">🗂 WP Glossary</div>
+            <nav>
+                <a href="#" class="wpgt-tab-link wpgt-active" data-panel="wpgt-panel-general">⚙ <?php esc_html_e('General','wp-glossary-tooltip'); ?></a>
+                <a href="#" class="wpgt-tab-link" data-panel="wpgt-panel-tooltip">💬 <?php esc_html_e('Tooltip','wp-glossary-tooltip'); ?></a>
+                <a href="#" class="wpgt-tab-link" data-panel="wpgt-panel-index">📋 <?php esc_html_e('Index Page','wp-glossary-tooltip'); ?></a>
+                <a href="#" class="wpgt-tab-link" data-panel="wpgt-panel-advanced">🔧 <?php esc_html_e('Advanced','wp-glossary-tooltip'); ?></a>
+                <a href="#" class="wpgt-tab-link" data-panel="wpgt-panel-import">📦 <?php esc_html_e('Import / Export','wp-glossary-tooltip'); ?></a>
+                <a href="#" class="wpgt-tab-link" data-panel="wpgt-panel-styles">🎨 <?php esc_html_e('Styles','wp-glossary-tooltip'); ?></a>
+            </nav>
+            <?php if ( $saved ) : ?>
+            <div class="wpgt-topbar-saved">✓ <?php esc_html_e('Saved','wp-glossary-tooltip'); ?></div>
             <?php endif; ?>
-
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-                <?php wp_nonce_field( 'wpgt_settings_save', 'wpgt_settings_nonce' ); ?>
-                <input type="hidden" name="action" value="wpgt_save_settings" />
-
-                <h2 class="nav-tab-wrapper wpgt-tabs">
-                    <a href="#wpgt-tab-general"  class="nav-tab nav-tab-active"><?php esc_html_e( 'General',        'wp-glossary-tooltip' ); ?></a>
-                    <a href="#wpgt-tab-tooltip"  class="nav-tab"><?php esc_html_e( 'Tooltip',         'wp-glossary-tooltip' ); ?></a>
-                    <a href="#wpgt-tab-index"    class="nav-tab"><?php esc_html_e( 'Index Page',      'wp-glossary-tooltip' ); ?></a>
-                    <a href="#wpgt-tab-advanced" class="nav-tab"><?php esc_html_e( 'Advanced',        'wp-glossary-tooltip' ); ?></a>
-                    <a href="#wpgt-tab-import"   class="nav-tab"><?php esc_html_e( 'Import / Export', 'wp-glossary-tooltip' ); ?></a>
-                    <a href="#wpgt-tab-sort"     class="nav-tab"><?php esc_html_e( 'Sort Terms',      'wp-glossary-tooltip' ); ?></a>
-                    <a href="#wpgt-tab-styles"   class="nav-tab"><?php esc_html_e( '🎨 Styles',       'wp-glossary-tooltip' ); ?></a>
-                </h2>
-
-                <!-- GENERAL TAB -->
-                <div id="wpgt-tab-general" class="wpgt-tab-content">
-                    <table class="form-table">
-                        <tr>
-                            <th><?php esc_html_e( 'Enable Tooltips', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <label>
-                                    <input type="checkbox" name="enable_tooltips" value="1"
-                                           <?php checked( $settings['enable_tooltips'] ); ?> />
-                                    <?php esc_html_e( 'Automatically add tooltips to glossary terms in content', 'wp-glossary-tooltip' ); ?>
-                                </label>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th><?php esc_html_e( 'Parse Post Types', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <?php foreach ( $post_types as $pt ) :
-                                    if ( in_array( $pt->name, [ WPGT_Post_Type::POST_TYPE, 'attachment' ], true ) ) continue;
-                                ?>
-                                <label style="display:block; margin-bottom:4px;">
-                                    <input type="checkbox"
-                                           name="parse_post_types[]"
-                                           value="<?php echo esc_attr( $pt->name ); ?>"
-                                           <?php checked( in_array( $pt->name, (array) $settings['parse_post_types'], true ) ); ?> />
-                                    <?php echo esc_html( $pt->labels->name ); ?>
-                                </label>
-                                <?php endforeach; ?>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th><?php esc_html_e( 'First Occurrence Only', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <label>
-                                    <input type="checkbox" name="first_occurrence" value="1"
-                                           <?php checked( $settings['first_occurrence'] ); ?> />
-                                    <?php esc_html_e( 'Only highlight the first occurrence of each term per page', 'wp-glossary-tooltip' ); ?>
-                                </label>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th><?php esc_html_e( 'Case Sensitive', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <label>
-                                    <input type="checkbox" name="case_sensitive" value="1"
-                                           <?php checked( $settings['case_sensitive'] ); ?> />
-                                    <?php esc_html_e( 'Match terms case-sensitively', 'wp-glossary-tooltip' ); ?>
-                                </label>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th><?php esc_html_e( 'Exclude Headings', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <label>
-                                    <input type="checkbox" name="exclude_headings" value="1"
-                                           <?php checked( $settings['exclude_headings'] ); ?> />
-                                    <?php esc_html_e( 'Do not add tooltips inside H1–H6 tags', 'wp-glossary-tooltip' ); ?>
-                                </label>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th><?php esc_html_e( 'Exclude Links', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <label>
-                                    <input type="checkbox" name="exclude_links" value="1"
-                                           <?php checked( $settings['exclude_links'] ); ?> />
-                                    <?php esc_html_e( 'Do not add tooltips inside &lt;a&gt; tags', 'wp-glossary-tooltip' ); ?>
-                                </label>
-                            </td>
-                        </tr>
-                    </table>
-                    <?php submit_button( __( 'Save Settings', 'wp-glossary-tooltip' ) ); ?>
-                </div>
-
-                <!-- TOOLTIP TAB -->
-                <div id="wpgt-tab-tooltip" class="wpgt-tab-content" style="display:none;">
-
-                    <h3 style="margin-top:1em; padding-bottom:6px; border-bottom:1px solid #ddd;"><?php esc_html_e( 'Behaviour', 'wp-glossary-tooltip' ); ?></h3>
-                    <table class="form-table">
-                        <tr>
-                            <th><?php esc_html_e( 'Open On', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <select name="open_on">
-                                    <option value="hover" <?php selected( $settings['open_on'], 'hover' ); ?>><?php esc_html_e( 'Hover', 'wp-glossary-tooltip' ); ?></option>
-                                    <option value="click" <?php selected( $settings['open_on'], 'click' ); ?>><?php esc_html_e( 'Click', 'wp-glossary-tooltip' ); ?></option>
-                                </select>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th><?php esc_html_e( 'Position', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <select name="tooltip_position">
-                                    <?php foreach ( [ 'top', 'bottom' ] as $pos ) : ?>
-                                    <option value="<?php echo $pos; ?>" <?php selected( $settings['tooltip_position'], $pos ); ?>><?php echo ucfirst( $pos ); ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th><?php esc_html_e( 'Show "Read More" Link', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <label>
-                                    <input type="checkbox" name="show_see_more" value="1" <?php checked( $settings['show_see_more'] ); ?> />
-                                    <?php esc_html_e( 'Show a "Read more \u2192" link pointing to the term page', 'wp-glossary-tooltip' ); ?>
-                                </label>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th><?php esc_html_e( 'Open Link in New Tab', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <label>
-                                    <input type="checkbox" name="link_new_tab" value="1" <?php checked( $settings['link_new_tab'] ?? true ); ?> />
-                                    <?php esc_html_e( 'Open the "Read more" link in a new browser tab', 'wp-glossary-tooltip' ); ?>
-                                </label>
-                            </td>
-                        </tr>
-
-                    </table>
-
-                    <p class="description" style="margin-top:1.5em;">
-                        <?php
-                        $styles_url = admin_url( 'edit.php?post_type=' . WPGT_Post_Type::POST_TYPE . '&page=wpgt-settings#wpgt-tab-styles' );
-                        printf(
-                            wp_kses( __( 'Colours, fonts and all visual options are managed in the <a href="%s">Styles tab</a>.', 'wp-glossary-tooltip' ), [ 'a' => [ 'href' => [] ] ] ),
-                            esc_url( $styles_url )
-                        );
-                        ?>
-                    </p>
-
-                    <?php submit_button( __( 'Save Settings', 'wp-glossary-tooltip' ) ); ?>
-                </div>
-
-                <!-- INDEX PAGE TAB -->
-                <div id="wpgt-tab-index" class="wpgt-tab-content" style="display:none;">
-                    <table class="form-table">
-                        <tr>
-                            <th><?php esc_html_e( 'Glossary Slug', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <input type="text" name="glossary_slug"
-                                       value="<?php echo esc_attr( $settings['glossary_slug'] ); ?>" />
-                                <p class="description"><?php esc_html_e( 'URL slug for the glossary archive (requires saving permalinks after change).', 'wp-glossary-tooltip' ); ?></p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th><?php esc_html_e( 'Index Columns', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <select name="index_columns">
-                                    <?php for ( $c = 1; $c <= 4; $c++ ) : ?>
-                                    <option value="<?php echo $c; ?>" <?php selected( (int) $settings['index_columns'], $c ); ?>>
-                                        <?php echo $c; ?>
-                                    </option>
-                                    <?php endfor; ?>
-                                </select>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th><?php esc_html_e( 'Show A–Z Bar', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <label>
-                                    <input type="checkbox" name="show_alphabet_bar" value="1"
-                                           <?php checked( $settings['show_alphabet_bar'] ); ?> />
-                                    <?php esc_html_e( 'Show the A–Z navigation bar on the [wpgt_glossary] shortcode output', 'wp-glossary-tooltip' ); ?>
-                                </label>
-                            </td>
-                        </tr>
-                    </table>
-                    <div class="wpgt-shortcode-help">
-                        <h3><?php esc_html_e( 'Available Shortcodes', 'wp-glossary-tooltip' ); ?></h3>
-                        <dl>
-                            <dt><code>[wpgt_glossary]</code></dt>
-                            <dd><?php esc_html_e( 'Full A–Z glossary index. Accepts: columns, show_alphabet, category, orderby.', 'wp-glossary-tooltip' ); ?></dd>
-                            <dt><code>[wpgt_term id="123"]</code></dt>
-                            <dd><?php esc_html_e( 'Inline definition box for a single term. Also accepts slug="my-term".', 'wp-glossary-tooltip' ); ?></dd>
-                            <dt><code>[wpgt_search]</code></dt>
-                            <dd><?php esc_html_e( 'Live AJAX search widget. Accepts: placeholder.', 'wp-glossary-tooltip' ); ?></dd>
-                        </dl>
-                    </div>
-                    <?php submit_button( __( 'Save Settings', 'wp-glossary-tooltip' ) ); ?>
-                </div>
-
-                <!-- ADVANCED TAB -->
-                <div id="wpgt-tab-advanced" class="wpgt-tab-content" style="display:none;">
-                    <table class="form-table">
-                        <tr>
-                            <th><?php esc_html_e( 'REST API', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <p><?php esc_html_e( 'Endpoints are available at:', 'wp-glossary-tooltip' ); ?></p>
-                                <ul>
-                                    <li><code><?php echo esc_html( rest_url( 'wpgt/v1/terms' ) ); ?></code></li>
-                                    <li><code><?php echo esc_html( rest_url( 'wpgt/v1/terms/{id}' ) ); ?></code></li>
-                                    <li><code><?php echo esc_html( rest_url( 'wpgt/v1/search?q=…' ) ); ?></code></li>
-                                </ul>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th><?php esc_html_e( 'Flush Rewrite Rules', 'wp-glossary-tooltip' ); ?></th>
-                            <td>
-                                <a href="<?php echo esc_url( add_query_arg( [ 'wpgt_flush' => '1', '_wpnonce' => wp_create_nonce( 'wpgt_flush' ) ], admin_url() ) ); ?>"
-                                   class="button">
-                                    <?php esc_html_e( 'Flush Rewrite Rules', 'wp-glossary-tooltip' ); ?>
-                                </a>
-                            </td>
-                        </tr>
-                    </table>
-                    <?php submit_button( __( 'Save Settings', 'wp-glossary-tooltip' ) ); ?>
-                </div>
-
-            </form>
-
-                <!-- IMPORT / EXPORT TAB — outside the settings form to avoid nesting -->
-                <div id="wpgt-tab-import" class="wpgt-tab-content" style="display:none;">
-
-                    <h3><?php esc_html_e( 'Export Glossary', 'wp-glossary-tooltip' ); ?></h3>
-                    <p><?php esc_html_e( 'Download all glossary terms as an Excel (.xlsx) file. Edit in Excel or Google Sheets, then re-import.', 'wp-glossary-tooltip' ); ?></p>
-                    <a href="<?php echo esc_url( admin_url( 'admin-post.php?action=wpgt_export&_wpnonce=' . wp_create_nonce('wpgt_export') ) ); ?>"
-                       class="button button-secondary">
-                        ⬇ <?php esc_html_e( 'Download Excel (.xlsx)', 'wp-glossary-tooltip' ); ?>
-                    </a>
-
-                    <hr style="margin:2em 0;">
-
-                    <h3><?php esc_html_e( 'Import Glossary', 'wp-glossary-tooltip' ); ?></h3>
-                    <p><?php esc_html_e( 'Upload an Excel (.xlsx) file to bulk-create or update glossary terms.', 'wp-glossary-tooltip' ); ?></p>
-                    <p><?php esc_html_e( 'Two columns only:', 'wp-glossary-tooltip' ); ?>
-                        <code>word</code> <?php esc_html_e( 'and', 'wp-glossary-tooltip' ); ?> <code>explanation</code> <?php esc_html_e( '(column headers in row 1)', 'wp-glossary-tooltip' ); ?>
-                    </p>
-                    <p><?php esc_html_e( 'If a word already exists it will be updated. New words will be created.', 'wp-glossary-tooltip' ); ?></p>
-                    <form method="post" action="<?php echo esc_url( admin_url('admin-post.php') ); ?>" enctype="multipart/form-data">
-                        <?php wp_nonce_field( 'wpgt_import', 'wpgt_import_nonce' ); ?>
-                        <input type="hidden" name="action" value="wpgt_import">
-                        <input type="file" name="wpgt_csv" accept=".xlsx" required style="margin-right:8px;">
-                        <input type="submit" class="button button-primary" value="⬆ <?php esc_attr_e( 'Import Excel', 'wp-glossary-tooltip' ); ?>">
-                    </form>
-                    <?php if ( ! empty($_GET['wpgt_imported']) ) : ?>
-                    <div class="notice notice-success inline" style="margin-top:1em;">
-                        <p><?php printf( esc_html__( 'Import complete: %d terms created, %d updated.', 'wp-glossary-tooltip' ),
-                            (int) ($_GET['created'] ?? 0), (int) ($_GET['updated'] ?? 0) ); ?></p>
-                    </div>
-                    <?php endif; ?>
-
-                    <hr style="margin:2em 0;">
-
-                    <h3><?php esc_html_e( 'Letter Taxonomy', 'wp-glossary-tooltip' ); ?></h3>
-                    <p><?php esc_html_e( 'Assigns every glossary term to its first-letter taxonomy term (ა, ბ, გ…). Run this once after importing terms, or whenever you add new terms starting with a new letter. Each letter gets its own archive URL at /glossary/letter/letter-a/ which Elementor sees as a taxonomy archive — build one template and apply it to all letter archives.', 'wp-glossary-tooltip' ); ?></p>
-                    <?php
-                    $letter_terms = get_terms( [ 'taxonomy' => WPGT_Post_Type::LETTER_TAX, 'hide_empty' => false ] );
-                    $letter_list  = ! is_wp_error( $letter_terms ) && ! empty( $letter_terms )
-                        ? implode( ', ', array_map( fn($t) => $t->name . ' <small>(' . $t->count . ')</small>', $letter_terms ) )
-                        : '<em>' . esc_html__( 'None yet', 'wp-glossary-tooltip' ) . '</em>';
-                    ?>
-                    <p><?php esc_html_e( 'Current letters:', 'wp-glossary-tooltip' ); ?> <?php echo $letter_list; ?></p>
-                    <form method="post" action="<?php echo esc_url( admin_url('admin-post.php') ); ?>">
-                        <?php wp_nonce_field( 'wpgt_sync_letters', 'wpgt_sync_letters_nonce' ); ?>
-                        <input type="hidden" name="action" value="wpgt_sync_letters">
-                        <input type="submit" class="button button-secondary"
-                               value="⟳ <?php esc_attr_e( 'Sync Letter Taxonomy', 'wp-glossary-tooltip' ); ?>">
-                    </form>
-                    <?php if ( isset( $_GET['wpgt_synced'] ) ) : ?>
-                    <div class="notice notice-success inline" style="margin-top:1em;">
-                        <p><?php printf(
-                            esc_html__( 'Done — %d terms synced, %d letter slug(s) repaired.', 'wp-glossary-tooltip' ),
-                            (int) $_GET['wpgt_synced'],
-                            (int) ( $_GET['wpgt_fixed'] ?? 0 )
-                        ); ?></p>
-                        <p><?php esc_html_e( 'If letter archive pages still 404, go to Settings → Permalinks and click Save.', 'wp-glossary-tooltip' ); ?></p>
-                    </div>
-                    <?php endif; ?>
-
-                    <hr style="margin:2em 0;">
-
-                    <h3><?php esc_html_e( 'Declined Forms', 'wp-glossary-tooltip' ); ?></h3>
-                    <p><?php esc_html_e( 'For each glossary term, the plugin auto-generates all declined forms (სტრესი, სტრესს, სტრესმა, სტრესისგან…) and stores them invisibly. The tooltip highlighter matches these exact forms — no guesswork, no false positives.', 'wp-glossary-tooltip' ); ?></p>
-                    <p><?php esc_html_e( 'Forms are regenerated automatically each time you save a term. Click below to regenerate all terms at once (useful after bulk import).', 'wp-glossary-tooltip' ); ?></p>
-                    <form method="post" action="<?php echo esc_url( admin_url('admin-post.php') ); ?>">
-                        <?php wp_nonce_field( 'wpgt_regen_forms', 'wpgt_regen_nonce' ); ?>
-                        <input type="hidden" name="action" value="wpgt_regen_forms">
-                        <input type="submit" class="button button-secondary"
-                               value="⟳ <?php esc_attr_e( 'Regenerate All Declined Forms', 'wp-glossary-tooltip' ); ?>">
-                    </form>
-                    <?php if ( isset( $_GET['wpgt_regenok'] ) ) : ?>
-                    <div class="notice notice-success inline" style="margin-top:1em;">
-                        <p><?php printf(
-                            esc_html__( 'Done — declined forms regenerated for %d terms.', 'wp-glossary-tooltip' ),
-                            (int) $_GET['wpgt_regenok']
-                        ); ?></p>
-                    </div>
-                    <?php endif; ?>
-
-                </div>
-
-                <!-- SORT TERMS TAB — outside the settings form -->
-                <div id="wpgt-tab-sort" class="wpgt-tab-content" style="display:none;">
-                    <?php
-                    $letter_terms = get_terms( [
-                        'taxonomy'   => WPGT_Post_Type::LETTER_TAX,
-                        'hide_empty' => true,
-                        'orderby'    => 'name',
-                        'order'      => 'ASC',
-                    ] );
-
-                    $selected_slug = isset( $_GET['wpgt_letter'] ) ? sanitize_text_field( $_GET['wpgt_letter'] ) : '';
-                    $selected_term = null;
-
-                    if ( $selected_slug && ! is_wp_error( $letter_terms ) ) {
-                        foreach ( $letter_terms as $lt ) {
-                            if ( $lt->slug === $selected_slug ) { $selected_term = $lt; break; }
-                        }
-                    }
-                    if ( ! $selected_term && ! is_wp_error( $letter_terms ) && ! empty( $letter_terms ) ) {
-                        $selected_term = $letter_terms[0];
-                        $selected_slug = $selected_term->slug;
-                    }
-
-                    $query_args = [
-                        'post_type'      => WPGT_Post_Type::POST_TYPE,
-                        'post_status'    => 'publish',
-                        'posts_per_page' => -1,
-                        'orderby'        => 'menu_order',
-                        'order'          => 'ASC',
-                    ];
-                    if ( $selected_term ) {
-                        $query_args['tax_query'] = [ [
-                            'taxonomy' => WPGT_Post_Type::LETTER_TAX,
-                            'field'    => 'term_id',
-                            'terms'    => $selected_term->term_id,
-                        ] ];
-                    }
-                    $sort_posts = get_posts( $query_args );
-                    ?>
-
-                    <p class="description"><?php esc_html_e( 'Drag and drop to set the display order within each letter. Saves automatically.', 'wp-glossary-tooltip' ); ?></p>
-
-                    <?php if ( ! is_wp_error( $letter_terms ) && ! empty( $letter_terms ) ) : ?>
-                    <div style="margin:14px 0; display:flex; flex-wrap:wrap; gap:6px;">
-                        <?php foreach ( $letter_terms as $lt ) :
-                            $url = add_query_arg( [
-                                'post_type'   => WPGT_Post_Type::POST_TYPE,
-                                'page'        => 'wpgt-settings',
-                                'wpgt_letter' => $lt->slug,
-                                '#'           => 'wpgt-tab-sort',
-                            ], admin_url( 'edit.php' ) );
-                            $active = ( $lt->slug === $selected_slug );
-                        ?>
-                        <a href="<?php echo esc_url( $url ); ?>#wpgt-tab-sort"
-                           style="display:inline-block; padding:5px 13px; border-radius:4px;
-                                  text-decoration:none; font-size:1.1rem; font-weight:700;
-                                  background:<?php echo $active ? '#2563eb' : '#f0f0f0'; ?>;
-                                  color:<?php echo $active ? '#fff' : '#333'; ?>;">
-                            <?php echo esc_html( $lt->name ); ?>
-                        </a>
-                        <?php endforeach; ?>
-                    </div>
-                    <?php endif; ?>
-
-                    <?php if ( empty( $sort_posts ) ) : ?>
-                        <p><?php esc_html_e( 'No terms found.', 'wp-glossary-tooltip' ); ?></p>
-                    <?php else : ?>
-                    <ul id="wpgt-sortable" style="list-style:none; margin:0; padding:0; max-width:680px;">
-                        <?php foreach ( $sort_posts as $sp ) : ?>
-                        <li data-id="<?php echo (int) $sp->ID; ?>"
-                            style="display:flex; align-items:center; gap:12px; background:#fff;
-                                   border:1px solid #ddd; border-radius:6px; padding:11px 15px;
-                                   margin-bottom:7px; cursor:grab; user-select:none;">
-                            <span style="color:#bbb; font-size:18px; flex-shrink:0;">&#9776;</span>
-                            <span style="font-weight:600;"><?php echo esc_html( $sp->post_title ); ?></span>
-                            <?php
-                            $ex = $sp->post_excerpt ?: wp_trim_words( strip_tags( $sp->post_content ), 10 );
-                            if ( $ex ) echo '<span style="color:#888;font-size:0.82rem;">' . esc_html( $ex ) . '</span>';
-                            ?>
-                        </li>
-                        <?php endforeach; ?>
-                    </ul>
-                    <p id="wpgt-order-saved" style="display:none; color:#2563eb; margin-top:10px; font-weight:600;">
-                        ✓ <?php esc_html_e( 'Order saved!', 'wp-glossary-tooltip' ); ?>
-                    </p>
-                    <script>
-                    jQuery(function($){
-                        $('#wpgt-sortable').sortable({
-                            placeholder: 'wpgt-sort-ph',
-                            update: function(){
-                                var ids = [];
-                                $('#wpgt-sortable li').each(function(){ ids.push($(this).data('id')); });
-                                $.post(ajaxurl,{
-                                    action:'wpgt_save_order', order:ids,
-                                    _wpnonce:'<?php echo wp_create_nonce("wpgt_save_order"); ?>'
-                                }, function(r){ if(r.success){$('#wpgt-order-saved').fadeIn().delay(2000).fadeOut();} });
-                            }
-                        });
-                    });
-                    </script>
-                    <style>
-                    .wpgt-sort-ph{background:#e8f0fe;border:2px dashed #2563eb;border-radius:6px;height:48px;margin-bottom:7px;list-style:none;}
-                    #wpgt-sortable li:active{cursor:grabbing;}
-                    #wpgt-tab-sort{padding-bottom:80px;}
-                    </style>
-                    <?php endif; ?>
-                </div>
-
-                <!-- STYLES TAB — outside the settings form, has its own form -->
-                <div id="wpgt-tab-styles" class="wpgt-tab-content" style="display:none;">
-                    <?php self::render_styles_tab(); ?>
-                </div>
-
         </div>
+
+        <?php
+        /* ─── Helper: wrap panel that has a form+savebar ───────────
+           Structure per panel:
+             .wpgt-tab-panel  (flex column, fixed)
+               form (flex:1, display:flex, flex-direction:column)
+                 .wpgt-panel-body   (flex:1, overflow-y:auto)  ← scrolls
+                   .wpgt-panel-card
+                 .wpgt-panel-savebar (flex:0)                  ← sticky bottom
+        ─────────────────────────────────────────────────────── */
+        ?>
+
+        <!-- GENERAL ─────────────────────────────────────────────── -->
+        <div id="wpgt-panel-general" class="wpgt-tab-panel wpgt-active">
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+                <?php wp_nonce_field('wpgt_settings_save','wpgt_settings_nonce'); ?>
+                <input type="hidden" name="action" value="wpgt_save_settings">
+                <div class="wpgt-panel-body">
+                    <div class="wpgt-panel-card">
+                        <h3><?php esc_html_e('Tooltip Behaviour','wp-glossary-tooltip'); ?></h3>
+                        <table class="form-table">
+                            <tr>
+                                <th><?php esc_html_e('Enable Tooltips','wp-glossary-tooltip'); ?></th>
+                                <td><label><input type="checkbox" name="enable_tooltips" value="1" <?php checked($settings['enable_tooltips']); ?>>
+                                    <?php esc_html_e('Automatically add tooltips to glossary terms in content','wp-glossary-tooltip'); ?></label></td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('Parse Post Types','wp-glossary-tooltip'); ?></th>
+                                <td><?php foreach ($post_types as $pt) :
+                                    if (in_array($pt->name,[WPGT_Post_Type::POST_TYPE,'attachment'],true)) continue; ?>
+                                    <label style="display:block;margin-bottom:5px;">
+                                        <input type="checkbox" name="parse_post_types[]" value="<?php echo esc_attr($pt->name); ?>"
+                                               <?php checked(in_array($pt->name,(array)$settings['parse_post_types'],true)); ?>>
+                                        <?php echo esc_html($pt->labels->name); ?>
+                                    </label>
+                                <?php endforeach; ?></td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('First Occurrence Only','wp-glossary-tooltip'); ?></th>
+                                <td><label><input type="checkbox" name="first_occurrence" value="1" <?php checked($settings['first_occurrence']); ?>>
+                                    <?php esc_html_e('Only highlight the first occurrence of each term per page','wp-glossary-tooltip'); ?></label></td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('Case Sensitive','wp-glossary-tooltip'); ?></th>
+                                <td><label><input type="checkbox" name="case_sensitive" value="1" <?php checked($settings['case_sensitive']); ?>>
+                                    <?php esc_html_e('Match terms case-sensitively','wp-glossary-tooltip'); ?></label></td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('Exclude Headings','wp-glossary-tooltip'); ?></th>
+                                <td><label><input type="checkbox" name="exclude_headings" value="1" <?php checked($settings['exclude_headings']); ?>>
+                                    <?php esc_html_e('Do not add tooltips inside H1–H6 tags','wp-glossary-tooltip'); ?></label></td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('Exclude Links','wp-glossary-tooltip'); ?></th>
+                                <td><label><input type="checkbox" name="exclude_links" value="1" <?php checked($settings['exclude_links']); ?>>
+                                    <?php esc_html_e('Do not add tooltips inside &lt;a&gt; tags','wp-glossary-tooltip'); ?></label></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div><!-- /.wpgt-panel-body -->
+                <div class="wpgt-panel-savebar">
+                    <?php submit_button(__('Save Settings','wp-glossary-tooltip'),'primary','submit',false); ?>
+                </div>
+            </form>
+        </div>
+
+        <!-- TOOLTIP ─────────────────────────────────────────────── -->
+        <div id="wpgt-panel-tooltip" class="wpgt-tab-panel">
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+                <?php wp_nonce_field('wpgt_settings_save','wpgt_settings_nonce'); ?>
+                <input type="hidden" name="action" value="wpgt_save_settings">
+                <div class="wpgt-panel-body">
+                    <div class="wpgt-panel-card">
+                        <h3><?php esc_html_e('Behaviour','wp-glossary-tooltip'); ?></h3>
+                        <table class="form-table">
+                            <tr>
+                                <th><?php esc_html_e('Open On','wp-glossary-tooltip'); ?></th>
+                                <td><select name="open_on">
+                                    <option value="hover" <?php selected($settings['open_on'],'hover'); ?>><?php esc_html_e('Hover','wp-glossary-tooltip'); ?></option>
+                                    <option value="click" <?php selected($settings['open_on'],'click'); ?>><?php esc_html_e('Click','wp-glossary-tooltip'); ?></option>
+                                </select></td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('Position','wp-glossary-tooltip'); ?></th>
+                                <td><select name="tooltip_position">
+                                    <?php foreach (['top','bottom'] as $pos) : ?>
+                                    <option value="<?php echo $pos; ?>" <?php selected($settings['tooltip_position'],$pos); ?>><?php echo ucfirst($pos); ?></option>
+                                    <?php endforeach; ?>
+                                </select></td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('Show "Read More" Link','wp-glossary-tooltip'); ?></th>
+                                <td><label><input type="checkbox" name="show_see_more" value="1" <?php checked($settings['show_see_more']); ?>>
+                                    <?php esc_html_e('Show a "Read more →" link pointing to the term page','wp-glossary-tooltip'); ?></label></td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('Open in New Tab','wp-glossary-tooltip'); ?></th>
+                                <td><label><input type="checkbox" name="link_new_tab" value="1" <?php checked($settings['link_new_tab'] ?? true); ?>>
+                                    <?php esc_html_e('Open "Read more" link in a new browser tab','wp-glossary-tooltip'); ?></label></td>
+                            </tr>
+                        </table>
+                        <p class="description" style="margin-top:16px;">
+                            <?php $styles_url = admin_url('edit.php?post_type='.WPGT_Post_Type::POST_TYPE.'&page=wpgt-settings');
+                            printf(wp_kses(__('Colours, fonts and visual options are in the <a href="%s">Styles tab</a>.','wp-glossary-tooltip'),['a'=>['href'=>[]]]),esc_url($styles_url)); ?>
+                        </p>
+                    </div>
+                </div>
+                <div class="wpgt-panel-savebar">
+                    <?php submit_button(__('Save Settings','wp-glossary-tooltip'),'primary','submit',false); ?>
+                </div>
+            </form>
+        </div>
+
+        <!-- INDEX PAGE ──────────────────────────────────────────── -->
+        <div id="wpgt-panel-index" class="wpgt-tab-panel">
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+                <?php wp_nonce_field('wpgt_settings_save','wpgt_settings_nonce'); ?>
+                <input type="hidden" name="action" value="wpgt_save_settings">
+                <div class="wpgt-panel-body">
+                    <div class="wpgt-panel-card">
+                        <h3><?php esc_html_e('Glossary Index','wp-glossary-tooltip'); ?></h3>
+                        <table class="form-table">
+                            <tr>
+                                <th><?php esc_html_e('Glossary Slug','wp-glossary-tooltip'); ?></th>
+                                <td><input type="text" name="glossary_slug" value="<?php echo esc_attr($settings['glossary_slug']); ?>">
+                                    <p class="description"><?php esc_html_e('URL slug for the glossary archive (save permalinks after change).','wp-glossary-tooltip'); ?></p></td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('Index Columns','wp-glossary-tooltip'); ?></th>
+                                <td><select name="index_columns">
+                                    <?php for ($c=1;$c<=4;$c++) : ?>
+                                    <option value="<?php echo $c; ?>" <?php selected((int)$settings['index_columns'],$c); ?>><?php echo $c; ?></option>
+                                    <?php endfor; ?>
+                                </select></td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('Show A–Z Bar','wp-glossary-tooltip'); ?></th>
+                                <td><label><input type="checkbox" name="show_alphabet_bar" value="1" <?php checked($settings['show_alphabet_bar']); ?>>
+                                    <?php esc_html_e('Show the A–Z navigation bar on the [wpgt_glossary] output','wp-glossary-tooltip'); ?></label></td>
+                            </tr>
+                        </table>
+                        <div class="wpgt-shortcode-help">
+                            <h3><?php esc_html_e('Available Shortcodes','wp-glossary-tooltip'); ?></h3>
+                            <dl>
+                                <dt><code>[wpgt_glossary]</code></dt>
+                                <dd><?php esc_html_e('Full A–Z glossary index. Accepts: columns, show_alphabet, category, orderby.','wp-glossary-tooltip'); ?></dd>
+                                <dt><code>[wpgt_term id="123"]</code></dt>
+                                <dd><?php esc_html_e('Inline definition box for a single term. Also accepts slug="my-term".','wp-glossary-tooltip'); ?></dd>
+                                <dt><code>[wpgt_search]</code></dt>
+                                <dd><?php esc_html_e('Live AJAX search widget. Accepts: placeholder.','wp-glossary-tooltip'); ?></dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+                <div class="wpgt-panel-savebar">
+                    <?php submit_button(__('Save Settings','wp-glossary-tooltip'),'primary','submit',false); ?>
+                </div>
+            </form>
+        </div>
+
+        <!-- ADVANCED ────────────────────────────────────────────── -->
+        <div id="wpgt-panel-advanced" class="wpgt-tab-panel">
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+                <?php wp_nonce_field('wpgt_settings_save','wpgt_settings_nonce'); ?>
+                <input type="hidden" name="action" value="wpgt_save_settings">
+                <div class="wpgt-panel-body">
+                    <div class="wpgt-panel-card">
+                        <h3><?php esc_html_e('REST API','wp-glossary-tooltip'); ?></h3>
+                        <p style="font-size:0.82rem;color:#555;margin:0 0 10px;"><?php esc_html_e('Endpoints available at:','wp-glossary-tooltip'); ?></p>
+                        <ul style="margin:0 0 0 16px;font-size:0.82rem;color:#555;line-height:2;">
+                            <li><code><?php echo esc_html(rest_url('wpgt/v1/terms')); ?></code></li>
+                            <li><code><?php echo esc_html(rest_url('wpgt/v1/terms/{id}')); ?></code></li>
+                            <li><code><?php echo esc_html(rest_url('wpgt/v1/search?q=…')); ?></code></li>
+                        </ul>
+                    </div>
+                    <div class="wpgt-panel-card">
+                        <h3><?php esc_html_e('Maintenance','wp-glossary-tooltip'); ?></h3>
+                        <table class="form-table">
+                            <tr>
+                                <th><?php esc_html_e('Flush Rewrite Rules','wp-glossary-tooltip'); ?></th>
+                                <td><a href="<?php echo esc_url(add_query_arg(['wpgt_flush'=>'1','_wpnonce'=>wp_create_nonce('wpgt_flush')],admin_url())); ?>" class="button">
+                                    <?php esc_html_e('Flush Rewrite Rules','wp-glossary-tooltip'); ?></a></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                <div class="wpgt-panel-savebar">
+                    <?php submit_button(__('Save Settings','wp-glossary-tooltip'),'primary','submit',false); ?>
+                </div>
+            </form>
+        </div>
+
+        <!-- IMPORT / EXPORT ─────────────────────────────────────── -->
+        <div id="wpgt-panel-import" class="wpgt-tab-panel">
+            <div class="wpgt-panel-body">
+
+                <div class="wpgt-panel-card">
+                    <h3><?php esc_html_e('Export Glossary','wp-glossary-tooltip'); ?></h3>
+                    <p style="font-size:0.82rem;color:#555;margin:0 0 14px;"><?php esc_html_e('Download all glossary terms as an Excel (.xlsx) file.','wp-glossary-tooltip'); ?></p>
+                    <a href="<?php echo esc_url(admin_url('admin-post.php?action=wpgt_export&_wpnonce='.wp_create_nonce('wpgt_export'))); ?>"
+                       class="button button-secondary">⬇ <?php esc_html_e('Download Excel (.xlsx)','wp-glossary-tooltip'); ?></a>
+                </div>
+
+                <div class="wpgt-panel-card">
+                    <h3><?php esc_html_e('Import Glossary','wp-glossary-tooltip'); ?></h3>
+                    <p style="font-size:0.82rem;color:#555;margin:0 0 8px;"><?php esc_html_e('Upload an Excel (.xlsx) file to bulk-create or update glossary terms.','wp-glossary-tooltip'); ?></p>
+                    <p style="font-size:0.82rem;color:#555;margin:0 0 14px;">
+                        <?php esc_html_e('Two columns only:','wp-glossary-tooltip'); ?> <code>word</code> <?php esc_html_e('and','wp-glossary-tooltip'); ?> <code>explanation</code>
+                    </p>
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
+                        <?php wp_nonce_field('wpgt_import','wpgt_import_nonce'); ?>
+                        <input type="hidden" name="action" value="wpgt_import">
+                        <input type="file" name="wpgt_csv" accept=".xlsx" required style="margin-right:10px;">
+                        <input type="submit" class="button button-primary" value="⬆ <?php esc_attr_e('Import Excel','wp-glossary-tooltip'); ?>">
+                    </form>
+                    <?php if (!empty($_GET['wpgt_imported'])) : ?>
+                    <div class="wpgt-notice wpgt-notice-success" style="margin-top:14px;">
+                        <?php printf(esc_html__('Import complete: %d terms created, %d updated.','wp-glossary-tooltip'),(int)($_GET['created']??0),(int)($_GET['updated']??0)); ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+                <div class="wpgt-panel-card">
+                    <h3><?php esc_html_e('Letter Taxonomy','wp-glossary-tooltip'); ?></h3>
+                    <p style="font-size:0.82rem;color:#555;margin:0 0 10px;"><?php esc_html_e('Assigns every term to its first-letter taxonomy. Run after importing.','wp-glossary-tooltip'); ?></p>
+                    <?php
+                    $letter_terms = get_terms(['taxonomy'=>WPGT_Post_Type::LETTER_TAX,'hide_empty'=>false]);
+                    $letter_list  = !is_wp_error($letter_terms) && !empty($letter_terms)
+                        ? implode(', ', array_map(fn($t)=>$t->name.' <small>('.$t->count.')</small>', $letter_terms))
+                        : '<em>'.esc_html__('None yet','wp-glossary-tooltip').'</em>';
+                    ?>
+                    <p style="font-size:0.82rem;color:#555;margin:0 0 14px;"><?php esc_html_e('Current letters:','wp-glossary-tooltip'); ?> <?php echo $letter_list; ?></p>
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                        <?php wp_nonce_field('wpgt_sync_letters','wpgt_sync_letters_nonce'); ?>
+                        <input type="hidden" name="action" value="wpgt_sync_letters">
+                        <input type="submit" class="button button-secondary" value="⟳ <?php esc_attr_e('Sync Letter Taxonomy','wp-glossary-tooltip'); ?>">
+                    </form>
+                    <?php if (isset($_GET['wpgt_synced'])) : ?>
+                    <div class="wpgt-notice wpgt-notice-success" style="margin-top:14px;">
+                        <?php printf(esc_html__('Done — %d terms synced, %d slug(s) repaired.','wp-glossary-tooltip'),(int)$_GET['wpgt_synced'],(int)($_GET['wpgt_fixed']??0)); ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+                <div class="wpgt-panel-card">
+                    <h3><?php esc_html_e('Declined Forms','wp-glossary-tooltip'); ?></h3>
+                    <p style="font-size:0.82rem;color:#555;margin:0 0 10px;"><?php esc_html_e('Regenerate all declined forms for every term. Useful after bulk import.','wp-glossary-tooltip'); ?></p>
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                        <?php wp_nonce_field('wpgt_regen_forms','wpgt_regen_nonce'); ?>
+                        <input type="hidden" name="action" value="wpgt_regen_forms">
+                        <input type="submit" class="button button-secondary" value="⟳ <?php esc_attr_e('Regenerate All Declined Forms','wp-glossary-tooltip'); ?>">
+                    </form>
+                    <?php if (isset($_GET['wpgt_regenok'])) : ?>
+                    <div class="wpgt-notice wpgt-notice-success" style="margin-top:14px;">
+                        <?php printf(esc_html__('Done — declined forms regenerated for %d terms.','wp-glossary-tooltip'),(int)$_GET['wpgt_regenok']); ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+            </div><!-- /.wpgt-panel-body -->
+        </div>
+
+        <!-- STYLES ──────────────────────────────────────────────── -->
+        <div id="wpgt-panel-styles" class="wpgt-tab-panel">
+            <?php self::render_styles_tab(); ?>
+        </div>
+
+        </div><!-- /.wpgt-settings-wrap -->
         <?php
     }
 
@@ -733,6 +597,30 @@ class WPGT_Admin {
                 case 'number':
                     echo '<div class="wpgt-field-num-wrap"><input type="number" ' . $attr . ' value="' . esc_attr($value) . '" min="0" max="999" /><span>' . esc_html($unit) . '</span></div>';
                     break;
+                case 'slider':
+                    $sl_min     = $opts['min']      ?? 0;
+                    $sl_max     = $opts['max']       ?? 1920;
+                    $sl_units   = $opts['units']     ?? ['px'];
+                    $sl_ukey    = $opts['unit_key']  ?? '';
+                    $sl_uval    = $opts['unit_val']  ?? 'px';
+                    echo '<div class="wpgt-field-slider-wrap" style="width:100%">';
+                    echo '<input type="range" class="wpgt-slider-range" min="' . (int)$sl_min . '" max="' . (int)$sl_max . '" value="' . esc_attr($value) . '" data-linked="' . esc_attr($id) . '" />';
+                    echo '<div class="wpgt-slider-input-row">';
+                    echo '<input type="number" ' . $attr . ' value="' . esc_attr($value) . '" min="' . (int)$sl_min . '" max="' . (int)$sl_max . '" class="wpgt-slider-number" />';
+                    if ( count($sl_units) > 1 && $sl_ukey ) {
+                        $ua = 'id="wpgt_s_' . esc_attr($sl_ukey) . '" name="wpgt_styles[' . esc_attr($sl_ukey) . ']" data-key="' . esc_attr($sl_ukey) . '"';
+                        echo '<div class="wpgt-unit-toggle">';
+                        foreach ( $sl_units as $u ) {
+                            $active = $sl_uval === $u ? ' wpgt-unit-btn--active' : '';
+                            echo '<button type="button" class="wpgt-unit-btn' . $active . '" data-unit="' . esc_attr($u) . '" data-target="wpgt_s_' . esc_attr($sl_ukey) . '" data-range-max-px="' . (int)$sl_max . '" data-range-max-pct="100">' . esc_html($u) . '</button>';
+                        }
+                        echo '<input type="hidden" ' . $ua . ' value="' . esc_attr($sl_uval) . '" class="wpgt-unit-hidden" />';
+                        echo '</div>';
+                    } else {
+                        echo '<span class="wpgt-slider-unit">' . esc_html($sl_units[0] ?? 'px') . '</span>';
+                    }
+                    echo '</div></div>';
+                    break;
                 case 'float':
                     echo '<div class="wpgt-field-num-wrap"><input type="number" step="0.01" min="0" max="10" ' . $attr . ' value="' . esc_attr($value) . '" /><span>' . esc_html($unit) . '</span></div>';
                     break;
@@ -762,7 +650,11 @@ class WPGT_Admin {
         // Card with inline preview:
         // $pv_html is echoed on the RIGHT side of the card
         $card = function( string $icon, string $title, string $css_class, callable $fields_fn, string $pv_html ) {
-            echo '<div class="wpgt-card">';
+            global $wpgt_previews;
+            static $card_idx = 0;
+            $card_id  = 'wpgt-card-' . $card_idx++;
+            $is_first = ( $card_id === 'wpgt-card-0' );
+            echo '<div class="wpgt-card' . ( $is_first ? ' wpgt-open' : '' ) . '" data-card="' . esc_attr($card_id) . '">';
             echo '<div class="wpgt-card-head">'
                 . '<span class="wpgt-card-icon">' . $icon . '</span>'
                 . '<span class="wpgt-card-title">' . esc_html($title) . '</span>'
@@ -772,11 +664,12 @@ class WPGT_Admin {
             echo '<div class="wpgt-card-fields">';
             $fields_fn();
             echo '</div>';
-            echo '<div class="wpgt-card-preview">';
-            echo '<p class="wpgt-pv-eyebrow">Live Preview</p>';
-            echo $pv_html;
-            echo '</div>';
             echo '</div></div>'; // inner + card
+            // Collect preview HTML for the right pane
+            $wpgt_previews[ $card_id ] = '<div class="wpgt-pv-block" data-card="' . esc_attr($card_id) . '" style="' . ( $is_first ? '' : 'display:none;' ) . '">'
+                . '<p class="wpgt-pv-eyebrow">' . esc_html($title) . '</p>'
+                . $pv_html
+                . '</div>';
         };
 
         $weights    = ['400'=>'Normal','500'=>'Medium','600'=>'Semi-bold','700'=>'Bold'];
@@ -787,6 +680,14 @@ class WPGT_Admin {
         $aligns     = ['left'=>'Left','center'=>'Center','right'=>'Right'];
         $justifys   = ['flex-start'=>'Left','center'=>'Center','flex-end'=>'Right','space-between'=>'Spread'];
         $bstyles    = ['solid'=>'Solid','dashed'=>'Dashed','dotted'=>'Dotted','none'=>'None'];
+
+        // ── Two-column panel: LEFT = accordion cards, RIGHT = live previews ──
+        echo '<div class="wpgt-styles-panel" id="wpgt-styles-panel">';
+
+        // ── Columns row ──────────────────────────────────────────────────
+        echo '<div class="wpgt-panel-cols">';
+        echo '<div class="wpgt-panel-left">';
+        echo '<div class="wpgt-panel-left-inner" id="wpgt-panel-left-inner">';
 
         // ══════════════════════════════════════════════════════════════════
         // CARD 0: Global Font
@@ -818,17 +719,16 @@ class WPGT_Admin {
         $card( '🔠', 'Global Font', 'font-family',
             function() use ( $popular_fonts, $current_font, $current_custom, $s ) {
                 ?>
-                <p style="font-size:0.8rem;color:#64748b;margin:0 0 14px;line-height:1.5;">
+                <p style="font-size:0.75rem;color:var(--el-text-muted,#7a8799);margin:0 0 12px;line-height:1.5;padding:10px 16px 0;">
                     Choose a font for all glossary elements — tooltip, index, term box, search widget.<br>
-                    Leave blank to inherit the site's own font automatically. <strong>This fixes font mismatch on tooltips.</strong>
+                    Leave blank to inherit the site's own font automatically. <strong style="color:var(--el-text,#cfd3d8);">This fixes font mismatch on tooltips.</strong>
                 </p>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;">
+                <div style="padding:0 0 6px;">
                     <div class="wpgt-field wpgt-field--full">
                         <label for="wpgt_s_global_font_family">Font</label>
                         <select id="wpgt_s_global_font_family"
                                 name="wpgt_styles[global_font_family]"
-                                data-key="global_font_family"
-                                style="width:100%;height:30px;font-size:0.85rem;border:1px solid #c3c4c7;border-radius:4px;">
+                                data-key="global_font_family">
                             <?php foreach ( $popular_fonts as $val => $label ) : ?>
                             <option value="<?php echo esc_attr($val); ?>" <?php selected( $val, $current_font && ! $current_custom ? $current_font : ( $current_custom ? '__custom__' : $current_font ) ); ?>>
                                 <?php echo esc_html($label); ?>
@@ -845,10 +745,9 @@ class WPGT_Admin {
                                data-key="global_font_custom"
                                value="<?php echo esc_attr( $s['global_font_custom'] ?? '' ); ?>"
                                placeholder="e.g. Noto Serif Georgian"
-                               class="wpgt-field-text"
-                               style="width:100%;" />
-                        <span style="font-size:0.72rem;color:#94a3b8;margin-top:2px;">
-                            Enter any <a href="https://fonts.google.com" target="_blank" style="color:#2563eb;">Google Fonts</a> family name exactly as listed.
+                               class="wpgt-field-text" />
+                        <span style="font-size:0.7rem;color:var(--el-text-muted,#7a8799);padding:0 16px 8px;display:block;">
+                            Enter any <a href="https://fonts.google.com" target="_blank" style="color:var(--el-accent,#6a8dff);">Google Fonts</a> family name exactly as listed.
                         </span>
                     </div>
                 </div>
@@ -1060,7 +959,14 @@ class WPGT_Admin {
 
                 $group('Widget', '.wpgt-search-widget');
                 $go();
-                    $field('Max Width', 'search_max_width', $s['search_max_width'], 'number', [], 'px');
+                    $field('Width', 'search_max_width', $s['search_max_width'], 'slider', [
+                        'min'      => 0,
+                        'max'      => 1920,
+                        'units'    => ['px', '%'],
+                        'unit_key' => 'search_max_width_unit',
+                        'unit_val' => $s['search_max_width_unit'] ?? 'px',
+                    ], '', true);
+                    $field('Input Height', 'search_input_height', $s['search_input_height'] ?? '44', 'number', [], 'px');
                 $gc();
 
                 $group('Input', '.wpgt-search-input');
@@ -1112,7 +1018,7 @@ class WPGT_Admin {
                 </span>
                 <input id="wpgt-pv-search-input" type="text"
                   placeholder="Search glossary…"
-                  style="width:100%;padding:8px 34px 8px 36px;font-size:0.85rem;border:1.5px solid #d1d5db;border-radius:6px;box-sizing:border-box;outline:none;background:#fff;color:#1e293b;border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom-color:transparent;" readonly />
+                  style="width:100%;padding:8px 34px 8px 44px;font-size:0.85rem;border:1.5px solid #d1d5db;border-radius:6px;box-sizing:border-box;outline:none;background:#fff;color:#1e293b;border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom-color:transparent;" readonly />
                 <span id="wpgt-pv-search-clear" style="position:absolute;right:10px;color:#94a3b8;display:flex;cursor:pointer;">
                   <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1 1L11 11M11 1L1 11" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
                 </span>
@@ -1131,7 +1037,8 @@ class WPGT_Admin {
         );
         ?>
 
-        <div style="margin:20px 0 32px;display:flex;gap:10px;align-items:center;">
+        <!-- Save bar inside left panel -->
+        <div class="wpgt-save-bar">
             <?php submit_button( __( 'Save Styles', 'wp-glossary-tooltip' ), 'primary', 'submit', false ); ?>
             <a href="<?php echo esc_url( wp_nonce_url(
                 admin_url( 'admin-post.php?action=wpgt_save_styles&wpgt_reset_styles=1' ),
@@ -1139,14 +1046,99 @@ class WPGT_Admin {
             ) ); ?>"
                class="button button-secondary"
                onclick="return confirm('<?php esc_attr_e( 'Reset all styles to plugin defaults?', 'wp-glossary-tooltip' ); ?>')">
-                <?php esc_html_e( 'Reset to Defaults', 'wp-glossary-tooltip' ); ?>
+                <?php esc_html_e( 'Reset', 'wp-glossary-tooltip' ); ?>
             </a>
         </div>
+
+        </div><!-- /.wpgt-panel-left-inner -->
+        </div><!-- /.wpgt-panel-left -->
+
+        <div class="wpgt-drag-handle" id="wpgt-drag-handle" title="Drag to resize"></div>
+
+        <!-- RIGHT: live preview pane — collects previews from all cards -->
+        <div class="wpgt-panel-right">
+            <div class="wpgt-panel-right-head">Live Preview</div>
+            <div class="wpgt-panel-right-body" id="wpgt-panel-right-body">
+                <?php
+                // Output all preview HTML collected by $card calls
+                global $wpgt_previews;
+                if ( ! empty( $wpgt_previews ) ) {
+                    foreach ( $wpgt_previews as $pv ) { echo $pv; }
+                }
+                ?>
+            </div>
+        </div>
+
+        </div><!-- /.wpgt-panel-cols -->
+        </div><!-- /.wpgt-styles-panel -->
 
         </form>
 
         <script>
         jQuery(function($){
+
+            // ── Inner tab bar: switch tabs from inside fullscreen panel ──
+            $(document).on('click', '#wpgt-panel-styles .wpgt-inner-tab', function(e){
+                e.preventDefault();
+                var href = $(this).attr('href'); // e.g. "#wpgt-tab-general"
+                // Fire click on the matching outer nav-tab
+                var $outer = $('a.nav-tab[href="' + href + '"]');
+                if ( $outer.length ) $outer.trigger('click');
+            });
+
+            // ── Accordion: click header to open/close card ───────────────
+            $(document).on('click', '#wpgt-panel-styles .wpgt-card-head', function(){
+                var $card   = $(this).closest('.wpgt-card');
+                var cardId  = $card.data('card');
+                var isOpen  = $card.hasClass('wpgt-open');
+
+                // Close all, open clicked
+                $('#wpgt-panel-styles .wpgt-card').removeClass('wpgt-open');
+                if ( ! isOpen ) {
+                    $card.addClass('wpgt-open');
+                    // Show matching preview in right pane
+                    $('#wpgt-panel-right-body .wpgt-pv-block').hide();
+                    $('#wpgt-panel-right-body .wpgt-pv-block[data-card="' + cardId + '"]').show();
+                } else {
+                    // All closed: show first preview
+                    $('#wpgt-panel-right-body .wpgt-pv-block').hide().first().show();
+                }
+            });
+
+            // ── Drag-to-resize left panel ────────────────────────────────
+            (function(){
+                var $handle = $('#wpgt-drag-handle');
+                var $left   = $handle.prev('.wpgt-panel-left');
+                var $panel  = $('#wpgt-styles-panel');
+                var dragging = false, startX, startW;
+
+                $handle.on('mousedown', function(e){
+                    dragging = true;
+                    startX   = e.clientX;
+                    startW   = $left.outerWidth();
+                    $handle.addClass('wpgt-dragging');
+                    // Overlay to capture mouse while dragging over iframe/preview
+                    $('<div id="wpgt-drag-overlay">').css({
+                        position:'fixed', top:0, left:0, right:0, bottom:0,
+                        zIndex:99999, cursor:'col-resize'
+                    }).appendTo('body');
+                    e.preventDefault();
+                });
+
+                $(document).on('mousemove.wpgtdrag', function(e){
+                    if ( ! dragging ) return;
+                    var dx      = e.clientX - startX;
+                    var newW    = Math.max(180, Math.min(startW + dx, $panel.outerWidth() * 0.7));
+                    $left.css('flex', '0 0 ' + newW + 'px');
+                });
+
+                $(document).on('mouseup.wpgtdrag', function(){
+                    if ( ! dragging ) return;
+                    dragging = false;
+                    $handle.removeClass('wpgt-dragging');
+                    $('#wpgt-drag-overlay').remove();
+                });
+            })();
 
             // ═══════════════════════════════════════════════════════════════
             // HOVER STATE STORE — must be declared FIRST so it is assigned
@@ -1171,7 +1163,7 @@ class WPGT_Admin {
             // ── Initialize color pickers — per-input closure so data-key is reliable ──
             // Bulk .wpColorPicker() loses the original `this` context in the callback;
             // closing over $input guarantees we always read data-key from the right element.
-            $('#wpgt-tab-styles .wpgt-style-picker').each(function(){
+            $('#wpgt-panel-styles .wpgt-style-picker').each(function(){
                 var $input = $(this);
                 $input.wpColorPicker({
                     change: function(e, ui){ wpgtStylePreview($input.data('key'), ui.color.toString()); },
@@ -1185,7 +1177,7 @@ class WPGT_Admin {
             <?php endforeach; ?>
 
             // ── Number / float / select / text inputs ───────────────────
-            $('#wpgt-tab-styles').on('input change', 'input, select', function(){
+            $('#wpgt-panel-styles').on('input change', 'input, select', function(){
                 wpgtStylePreview($(this).data('key'), $(this).val());
             });
 
@@ -1411,11 +1403,43 @@ class WPGT_Admin {
                     case 'search_result_padding_v':sr.find('div').css({'padding-top':px(val,'8px'),'padding-bottom':px(val,'8px')}); break;
                     case 'search_result_padding_h':sr.find('div').css({'padding-left':px(val,'12px'),'padding-right':px(val,'12px')}); break;
                     case 'search_max_width':       break; // width not constrained in admin card preview
+                    case 'search_max_width_unit':  break;
+                    case 'search_input_height':    si.css({'min-height':val?val+'px':'','padding-top':val?Math.max(0,Math.round((parseInt(val)-24)/2))+'px':'','padding-bottom':val?Math.max(0,Math.round((parseInt(val)-24)/2))+'px':''}); break;
                 }
             }
 
             // Expose globally so external script blocks can call it
             window.wpgtStylePreview = wpgtStylePreview;
+
+            // ── Slider range ↔ number input sync ────────────────────────
+            $('#wpgt-panel-styles').on('input', '.wpgt-slider-range', function(){
+                var $r = $(this), $n = $('#' + $r.data('linked'));
+                $n.val($r.val());
+                wpgtStylePreview($n.data('key'), $r.val());
+            });
+            $('#wpgt-panel-styles').on('input', '.wpgt-slider-number', function(){
+                var $n = $(this), $r = $n.closest('.wpgt-field-slider-wrap').find('.wpgt-slider-range');
+                $r.val($n.val());
+                wpgtStylePreview($n.data('key'), $n.val());
+            });
+
+            // ── Unit toggle buttons ──────────────────────────────────────
+            $('#wpgt-panel-styles').on('click', '.wpgt-unit-btn', function(){
+                var $btn = $(this), unit = $btn.data('unit'), target = $btn.data('target');
+                var maxPx = parseInt($btn.data('range-max-px')) || 1920;
+                var maxPct= parseInt($btn.data('range-max-pct')) || 100;
+                $btn.closest('.wpgt-unit-toggle').find('.wpgt-unit-btn').removeClass('wpgt-unit-btn--active');
+                $btn.addClass('wpgt-unit-btn--active');
+                $('#' + target).val(unit);
+                var $wrap = $btn.closest('.wpgt-field-slider-wrap');
+                var $r = $wrap.find('.wpgt-slider-range'), $n = $wrap.find('.wpgt-slider-number');
+                var newMax = unit === '%' ? maxPct : maxPx;
+                $r.attr('max', newMax); $n.attr('max', newMax);
+                var cur = parseInt($n.val()) || 0;
+                if (cur > newMax) { cur = newMax; $n.val(cur); $r.val(cur); }
+                wpgtStylePreview($n.data('key'), $n.val());
+                wpgtStylePreview($('#' + target).data('key'), unit);
+            });
 
             // ── Font card: show/hide custom input ───────────────────────
             $('#wpgt_s_global_font_family').on('change', function(){
@@ -1429,215 +1453,441 @@ class WPGT_Admin {
         });
         </script>
         <style>
-        /* ════════════════════════════════════════════════════════
-           CARD – outer container
-        ════════════════════════════════════════════════════════ */
-        .wpgt-card {
-            background: #fff;
-            border: 1px solid #dde1e7;
-            border-radius: 8px;
-            margin-bottom: 16px;
-            /* overflow:hidden would clip color picker popups — use visible */
+        /* ═══════════════════════════════════════════════════════
+           ELEMENTOR WHITE THEME — CSS variables
+           Matches Elementor's actual light panel palette
+        ═══════════════════════════════════════════════════════ */
+        #wpgt-panel-styles {
+            --el-bg:          #f0f0f1;
+            --el-panel-bg:    #ffffff;
+            --el-left-bg:     #ffffff;
+            --el-border:      #e0e0e0;
+            --el-border2:     #f0f0f1;
+            --el-text:        #1e1e1e;
+            --el-text-muted:  #8a8a8a;
+            --el-text-head:   #1e1e1e;
+            --el-accent:      #4054b2;
+            --el-accent2:     #4054b2;
+            --el-input-bg:    #f9f9f9;
+            --el-input-bd:    #d5d5d5;
+            --el-input-focus: #4054b2;
+            --el-head-bg:     #fafafa;
+            --el-head-border: #e0e0e0;
+            --el-section-bg:  #f7f7f7;
+            --el-hover-bg:    #eef0fb;
+            --el-active-bg:   #eef0fb;
+            --el-active-left: #4054b2;
+        }
+
+        /* ════════════════════════════════════════════════════
+           STYLES PANEL — fills its fixed parent #wpgt-panel-styles
+        ════════════════════════════════════════════════════ */
+        #wpgt-panel-styles .wpgt-styles-panel {
+            display: flex;
+            flex-direction: column;
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--el-bg);
+            overflow: hidden;
+        }
+
+        /* ── Inner tab bar — HIDDEN (outer topbar handles navigation) ── */
+        #wpgt-panel-styles .wpgt-inner-tabbar { display: none; }
+
+        /* ── Columns row ─────────────────────────────────── */
+        #wpgt-panel-styles .wpgt-panel-cols,
+        #wpgt-panel-styles .wpgt-panel-cols { display: flex; flex: 1; min-height: 0; }
+
+        /* ── Left panel ──────────────────────────────────── */
+        #wpgt-panel-styles .wpgt-panel-left {
+            flex: 0 0 280px;
+            min-width: 200px;
+            max-width: 55%;
+            background: var(--el-left-bg);
+            border-right: 1px solid var(--el-border);
+            display: flex;
+            flex-direction: column;
             overflow: visible;
         }
-        .wpgt-card-head {
+        #wpgt-panel-styles .wpgt-panel-left-inner {
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        /* ── Drag handle ─────────────────────────────────── */
+        #wpgt-panel-styles .wpgt-drag-handle {
+            flex: 0 0 4px;
+            background: var(--el-border);
+            cursor: col-resize;
+            position: relative;
+            z-index: 10;
+            transition: background .15s;
+        }
+        #wpgt-panel-styles .wpgt-drag-handle:hover,
+        #wpgt-panel-styles .wpgt-drag-handle.wpgt-dragging { background: var(--el-accent); }
+        #wpgt-panel-styles .wpgt-drag-handle::after {
+            content: "⋮";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%,-50%);
+            color: #bbb;
+            font-size: 13px;
+            line-height: 1;
+            pointer-events: none;
+        }
+
+        /* ── Right panel (live preview) ──────────────────── */
+        #wpgt-panel-styles .wpgt-panel-right {
+            flex: 1;
+            min-width: 200px;
+            background: #f7f7f7;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #wpgt-panel-styles .wpgt-panel-right-head {
+            padding: 11px 20px;
+            border-bottom: 1px solid var(--el-border);
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .09em;
+            color: #aaa;
+            background: #fff;
+            flex-shrink: 0;
+        }
+        #wpgt-panel-styles .wpgt-panel-right-body {
+            padding: 24px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        /* ── Color picker — fixed so it escapes overflow:hidden ── */
+        #wpgt-panel-styles .wp-picker-container {
+            position: relative;
+            z-index: 200;
+        }
+        #wpgt-panel-styles .wp-picker-container .wp-picker-holder {
+            position: fixed !important;
+            z-index: 999999 !important;
+        }
+        .iris-picker { z-index: 999999 !important; }
+
+        /* ════════════════════════════════════════════════════
+           ACCORDION CARDS
+        ════════════════════════════════════════════════════ */
+        #wpgt-panel-styles .wpgt-card {
+            background: var(--el-left-bg);
+            border: none;
+            border-radius: 0;
+            margin-bottom: 0;
+            border-bottom: 1px solid var(--el-border2);
+            overflow: visible;
+        }
+
+        /* Card header */
+        #wpgt-panel-styles .wpgt-card-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 11px 16px 11px 20px;
+            background: var(--el-left-bg);
+            border-bottom: none;
+            border-left: 3px solid transparent;
+            border-radius: 0;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--el-text);
+            cursor: pointer;
+            user-select: none;
+            transition: background .12s, border-color .12s;
+            position: relative;
+        }
+        #wpgt-panel-styles .wpgt-card-head:hover {
+            background: var(--el-hover-bg);
+            border-left-color: #c5cef7;
+        }
+        #wpgt-panel-styles .wpgt-card.wpgt-open > .wpgt-card-head {
+            background: var(--el-active-bg);
+            border-left-color: var(--el-active-left);
+            color: var(--el-accent);
+            font-weight: 600;
+        }
+
+        /* Chevron arrow */
+        #wpgt-panel-styles .wpgt-card-head::after {
+            content: "";
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%) rotate(-90deg);
+            width: 0; height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-top: 5px solid #bbb;
+            transition: transform .18s;
+        }
+        #wpgt-panel-styles .wpgt-card.wpgt-open > .wpgt-card-head::after {
+            transform: translateY(-50%) rotate(0deg);
+            border-top-color: var(--el-accent);
+        }
+
+        #wpgt-panel-styles .wpgt-card-icon { font-size: 1rem; line-height: 1; flex-shrink: 0; }
+        #wpgt-panel-styles .wpgt-card-title { flex: 1; }
+        #wpgt-panel-styles .wpgt-card-head > .wpgt-css-badge { display: none; }
+
+        /* Card body */
+        #wpgt-panel-styles .wpgt-card-inner { display: none; }
+        #wpgt-panel-styles .wpgt-card.wpgt-open > .wpgt-card-inner { display: block; }
+        #wpgt-panel-styles .wpgt-card-fields { padding: 4px 0; border-right: none; }
+        #wpgt-panel-styles .wpgt-card-preview { display: none; }
+
+        /* ════════════════════════════════════════════════════
+           GROUP LABEL
+        ════════════════════════════════════════════════════ */
+        #wpgt-panel-styles .wpgt-group-label {
             display: flex;
             align-items: center;
             gap: 8px;
-            padding: 10px 16px;
-            background: #f3f4f6;
-            border-bottom: 1px solid #dde1e7;
-            font-size: 0.875rem;
-            font-weight: 700;
-            color: #1e293b;
-            border-radius: 8px 8px 0 0; /* replaces overflow:hidden for rounding */
-        }
-        .wpgt-card-icon { font-size: 1rem; line-height: 1; }
-
-        /* ════════════════════════════════════════════════════════
-           CARD INNER – two columns: fields | preview
-        ════════════════════════════════════════════════════════ */
-        .wpgt-card-inner {
-            display: grid;
-            grid-template-columns: 1fr 280px;
-            min-height: 0;
-        }
-        .wpgt-card-fields {
-            padding: 14px 16px;
-            border-right: 1px solid #dde1e7;
-            min-width: 0;
-        }
-        .wpgt-card-preview {
-            padding: 14px 16px;
-            background: #f8fafc;
-            min-width: 0;
-        }
-
-        /* ════════════════════════════════════════════════════════
-           GROUP LABEL – sub-section divider
-        ════════════════════════════════════════════════════════ */
-        .wpgt-group-label {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 0.68rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.07em;
-            color: #64748b;
-            margin: 14px 0 8px;
-            padding-bottom: 5px;
-            border-bottom: 1px solid #eff2f5;
-        }
-        .wpgt-group-label:first-child { margin-top: 0; }
-
-        /* ════════════════════════════════════════════════════════
-           2-COL FIELD GRID
-        ════════════════════════════════════════════════════════ */
-        .wpgt-field-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px 14px;
-        }
-        .wpgt-field {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            min-width: 0;
-        }
-        .wpgt-field--full { grid-column: 1 / -1; }
-        .wpgt-field label {
-            font-size: 0.72rem;
-            font-weight: 500;
-            color: #475569;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        /* ── Color picker ─────────────────────────────────── */
-        .wpgt-field-color-wrap .wp-color-result {
-            width: 28px !important;
-            height: 24px !important;
-            border-radius: 4px !important;
-            margin: 0 !important;
-        }
-        .wpgt-field-color-wrap .wp-picker-container { display: flex; align-items: center; gap: 4px; }
-        .wpgt-field-color-wrap .wp-color-result-text { display: none; }
-        .wpgt-field-color-wrap input[type=text].wpgt-style-picker {
-            width: 72px !important;
-            font-size: 0.72rem !important;
-            height: 24px !important;
-            padding: 0 4px !important;
-            border-radius: 4px;
-        }
-
-        /* ── Number input ─────────────────────────────────── */
-        .wpgt-field-num-wrap { display: flex; align-items: center; gap: 3px; }
-        .wpgt-field-num-wrap input[type=number] {
-            width: 52px !important;
-            font-size: 0.78rem;
-            padding: 3px 5px !important;
-            height: 26px;
-            border: 1px solid #c3c4c7;
-            border-radius: 4px;
-            box-shadow: none;
-        }
-        .wpgt-field-num-wrap span { font-size: 0.7rem; color: #94a3b8; }
-
-        /* ── Select ───────────────────────────────────────── */
-        .wpgt-field select {
-            width: 100%;
-            font-size: 0.78rem;
-            height: 26px;
-            padding: 0 4px;
-            border: 1px solid #c3c4c7;
-            border-radius: 4px;
-        }
-
-        /* ── Text input ───────────────────────────────────── */
-        .wpgt-field-text {
-            width: 100% !important;
-            font-size: 0.78rem;
-            height: 26px;
-            padding: 0 6px !important;
-            border: 1px solid #c3c4c7 !important;
-            border-radius: 4px;
-            box-shadow: none !important;
-            box-sizing: border-box;
-        }
-
-        /* ════════════════════════════════════════════════════════
-           PREVIEW PANE
-        ════════════════════════════════════════════════════════ */
-        .wpgt-pv-eyebrow {
-            font-size: 0.62rem;
+            font-size: 0.65rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: .08em;
-            color: #94a3b8;
-            margin: 0 0 10px;
+            color: var(--el-text-muted);
+            padding: 10px 20px 7px;
+            border-bottom: 1px solid var(--el-border2);
+            background: var(--el-section-bg);
         }
-        .wpgt-pv-sentence {
-            font-size: 0.85rem;
-            line-height: 1.6;
-            color: #374151;
-            margin: 0 0 10px;
+        #wpgt-panel-styles .wpgt-group-label .wpgt-css-badge {
+            background: #e8ecfb;
+            color: var(--el-accent);
+            border: none;
         }
 
-        /* ════════════════════════════════════════════════════════
-           CSS CLASS BADGE
-        ════════════════════════════════════════════════════════ */
-        .wpgt-css-badge {
-            font-size: 0.68rem;
+        /* ════════════════════════════════════════════════════
+           FIELDS — inline row (label left, control right)
+        ════════════════════════════════════════════════════ */
+        #wpgt-panel-styles .wpgt-field-grid { display: block; }
+        #wpgt-panel-styles .wpgt-field {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 16px 7px 20px;
+            border-bottom: 1px solid var(--el-border2);
+            min-width: 0;
+        }
+        #wpgt-panel-styles .wpgt-field:last-child { border-bottom: none; }
+        #wpgt-panel-styles .wpgt-field--full {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        #wpgt-panel-styles .wpgt-field label {
+            flex: 0 0 105px;
+            font-size: 0.75rem;
             font-weight: 400;
-            background: #eff6ff;
-            color: #2563eb;
-            padding: 1px 5px;
-            border-radius: 3px;
-            font-family: monospace;
-            flex-shrink: 0;
+            color: var(--el-text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: default;
         }
-        .wpgt-css-badge--sm { font-size: 0.62rem; }
-
-        /* ════════════════════════════════════════════════════════
-           RESPONSIVE – stack at narrow viewports
-        ════════════════════════════════════════════════════════ */
-        @media (max-width: 960px) {
-            .wpgt-card-inner { grid-template-columns: 1fr; }
-            .wpgt-card-fields { border-right: none; border-bottom: 1px solid #dde1e7; }
-        }
-
-        /* ════════════════════════════════════════════════════════
-           PREVIEW UTILITIES
-        ════════════════════════════════════════════════════════ */
-        .wpgt-pv-eyebrow {
-            font-size: 0.62rem;
+        #wpgt-panel-styles .wpgt-field--full label {
+            flex: none;
+            margin-bottom: 5px;
+            color: var(--el-text-muted);
+            font-size: 0.64rem;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: .07em;
-            color: #94a3b8;
-            margin: 0 0 8px;
+            letter-spacing: .06em;
         }
-        .wpgt-pv-sentence {
-            font-size: 0.9rem;
-            line-height: 1.6;
-            color: #374151;
-            margin: 0 0 10px;
+        #wpgt-panel-styles .wpgt-field > div,
+        #wpgt-panel-styles .wpgt-field > select,
+        #wpgt-panel-styles .wpgt-field > input { flex: 1; min-width: 0; }
+
+        /* ── Color swatch ─────────────────────────────────── */
+        #wpgt-panel-styles .wpgt-field-color-wrap {
+            display: flex; align-items: center; gap: 6px; flex: 1;
+        }
+        #wpgt-panel-styles .wpgt-field-color-wrap .wp-color-result {
+            width: 28px !important; height: 26px !important;
+            border-radius: 4px !important; margin: 0 !important;
+            border: 1px solid var(--el-input-bd) !important;
+        }
+        #wpgt-panel-styles .wpgt-field-color-wrap .wp-picker-container {
+            display: flex; align-items: center; gap: 6px; width: 100%;
+            position: relative;
+        }
+        #wpgt-panel-styles .wpgt-field-color-wrap .wp-color-result-text { display: none; }
+        #wpgt-panel-styles .wpgt-field-color-wrap input[type=text].wpgt-style-picker {
+            background: var(--el-input-bg) !important;
+            color: var(--el-text) !important;
+            border: 1px solid var(--el-input-bd) !important;
+            border-radius: 4px !important;
+            height: 26px !important;
+            font-size: 0.72rem !important;
+            padding: 0 6px !important;
+            width: 88px !important;
+            box-shadow: none !important;
         }
 
-        /* ════════════════════════════════════════════════════════
-           TEXT FIELD (for Read More text etc.)
-        ════════════════════════════════════════════════════════ */
-        .wpgt-field-text {
-            width: 100% !important;
-            height: 28px;
-            padding: 0 8px !important;
-            font-size: 0.82rem !important;
-            border: 1px solid #c3c4c7;
-            border-radius: 4px;
-            box-shadow: none;
-            box-sizing: border-box;
+        /* ── Number input ─────────────────────────────────── */
+        #wpgt-panel-styles .wpgt-field-num-wrap { display: flex; align-items: center; gap: 4px; }
+        #wpgt-panel-styles .wpgt-field-num-wrap input[type=number] {
+            width: 60px !important;
+            background: var(--el-input-bg) !important;
+            color: var(--el-text) !important;
+            border: 1px solid var(--el-input-bd) !important;
+            border-radius: 4px !important;
+            height: 28px !important;
+            font-size: 0.78rem !important;
+            padding: 0 6px !important;
+            box-shadow: none !important;
+            text-align: center;
+        }
+        #wpgt-panel-styles .wpgt-field-num-wrap input[type=number]:focus {
+            border-color: var(--el-input-focus) !important;
+            box-shadow: 0 0 0 2px rgba(64,84,178,.15) !important;
+            outline: none;
+        }
+        #wpgt-panel-styles .wpgt-field-num-wrap span {
+            font-size: 0.68rem; color: var(--el-text-muted);
+            background: #f0f0f0; padding: 2px 6px;
+            border-radius: 3px; border: 1px solid var(--el-input-bd);
+        }
+
+        /* ── Slider (Width control) ──────────────────────── */
+        #wpgt-panel-styles .wpgt-field-slider-wrap {
+            width: 100%; display: flex; flex-direction: column; gap: 6px;
+        }
+        #wpgt-panel-styles .wpgt-slider-range {
+            -webkit-appearance: none; appearance: none;
+            width: 100%; height: 3px; border-radius: 3px;
+            background: #ddd; outline: none; cursor: pointer;
+            accent-color: var(--el-accent);
+        }
+        #wpgt-panel-styles .wpgt-slider-range::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 14px; height: 14px; border-radius: 50%;
+            background: var(--el-accent); cursor: pointer;
+            border: 2px solid #fff;
+            box-shadow: 0 1px 4px rgba(0,0,0,.2);
+        }
+        #wpgt-panel-styles .wpgt-slider-range::-moz-range-thumb {
+            width: 14px; height: 14px; border-radius: 50%;
+            background: var(--el-accent); cursor: pointer;
+            border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.2);
+        }
+        #wpgt-panel-styles .wpgt-slider-input-row { display: flex; align-items: center; gap: 6px; }
+        #wpgt-panel-styles .wpgt-slider-number {
+            width: 60px !important; font-size: 0.78rem;
+            padding: 3px 6px !important; height: 28px;
+            border: 1px solid var(--el-input-bd); border-radius: 4px;
+            box-shadow: none !important; text-align: center;
+            background: var(--el-input-bg); color: var(--el-text);
+        }
+        #wpgt-panel-styles .wpgt-slider-unit { font-size: 0.68rem; color: var(--el-text-muted); }
+        #wpgt-panel-styles .wpgt-unit-toggle {
+            display: flex; border: 1px solid var(--el-input-bd);
+            border-radius: 4px; overflow: hidden;
+        }
+        #wpgt-panel-styles .wpgt-unit-btn {
+            padding: 3px 8px; font-size: 0.72rem; font-weight: 500;
+            background: #f5f5f5; border: none;
+            border-right: 1px solid var(--el-input-bd);
+            cursor: pointer; color: #555; line-height: 1; height: 26px;
+            transition: background .1s, color .1s;
+        }
+        #wpgt-panel-styles .wpgt-unit-btn:last-of-type { border-right: none; }
+        #wpgt-panel-styles .wpgt-unit-btn--active { background: var(--el-accent); color: #fff; }
+        #wpgt-panel-styles .wpgt-unit-btn:hover:not(.wpgt-unit-btn--active) { background: #e8ecfb; color: var(--el-accent); }
+
+        /* ── Select ───────────────────────────────────────── */
+        #wpgt-panel-styles .wpgt-field select {
+            background: var(--el-input-bg) !important;
+            color: var(--el-text) !important;
+            border: 1px solid var(--el-input-bd) !important;
+            border-radius: 4px !important; height: 28px !important;
+            font-size: 0.78rem !important; padding: 0 6px !important;
+            box-shadow: none !important; width: 100%;
+        }
+        #wpgt-panel-styles .wpgt-field select:focus {
+            border-color: var(--el-input-focus) !important;
+            box-shadow: 0 0 0 2px rgba(64,84,178,.15) !important; outline: none;
+        }
+
+        /* ── Text input ───────────────────────────────────── */
+        #wpgt-panel-styles .wpgt-field-text,
+        #wpgt-panel-styles .wpgt-field input[type=text]:not(.wpgt-style-picker) {
+            background: var(--el-input-bg) !important; color: var(--el-text) !important;
+            border: 1px solid var(--el-input-bd) !important; border-radius: 4px !important;
+            height: 28px !important; font-size: 0.78rem !important;
+            padding: 0 8px !important; box-shadow: none !important;
+            box-sizing: border-box; width: 100% !important;
+        }
+
+        /* ── Checkbox ─────────────────────────────────────── */
+        #wpgt-panel-styles .wpgt-field input[type=checkbox] {
+            width: 16px; height: 16px;
+            accent-color: var(--el-accent); cursor: pointer;
+        }
+
+        /* ════════════════════════════════════════════════════
+           SAVE BAR
+        ════════════════════════════════════════════════════ */
+        #wpgt-panel-styles .wpgt-save-bar {
+            position: sticky; bottom: 0; z-index: 99;
+            background: #fff; border-top: 1px solid var(--el-border);
+            padding: 10px 16px; display: flex; align-items: center; gap: 8px;
+        }
+        #wpgt-panel-styles .wpgt-save-bar .button-primary {
+            background: var(--el-accent) !important;
+            border-color: var(--el-accent) !important;
+            color: #fff !important; font-weight: 600 !important;
+            box-shadow: none !important; text-shadow: none !important;
+            border-radius: 4px !important; font-size: 0.8rem !important;
+        }
+        #wpgt-panel-styles .wpgt-save-bar .button-primary:hover {
+            background: #354299 !important; border-color: #354299 !important;
+        }
+        #wpgt-panel-styles .wpgt-save-bar .button-secondary {
+            background: transparent !important;
+            border-color: var(--el-input-bd) !important;
+            color: var(--el-text-muted) !important;
+            box-shadow: none !important; text-shadow: none !important;
+            border-radius: 4px !important; font-size: 0.8rem !important;
+        }
+
+        /* ════════════════════════════════════════════════════
+           CSS BADGE
+        ════════════════════════════════════════════════════ */
+        .wpgt-css-badge {
+            font-size: 0.65rem; font-weight: 400;
+            background: #e8ecfb; color: var(--el-accent,#4054b2);
+            padding: 1px 5px; border-radius: 3px;
+            font-family: monospace; flex-shrink: 0;
+        }
+        .wpgt-css-badge--sm { font-size: 0.6rem; }
+
+        /* ════════════════════════════════════════════════════
+           PREVIEW PANE utilities
+        ════════════════════════════════════════════════════ */
+        .wpgt-pv-eyebrow {
+            font-size: 0.62rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: .08em;
+            color: #aaa; margin: 0 0 10px;
+        }
+        .wpgt-pv-sentence { font-size: 0.9rem; line-height: 1.6; color: #374151; margin: 0 0 10px; }
+
+        /* ════════════════════════════════════════════════════
+           RESPONSIVE
+        ════════════════════════════════════════════════════ */
+        @media (max-width: 820px) {
+            #wpgt-panel-styles .wpgt-styles-panel { left: 0; flex-direction: column; }
+            #wpgt-panel-styles .wpgt-panel-left { flex: 0 0 auto; max-width: 100%; }
+            #wpgt-panel-styles .wpgt-drag-handle { display: none; }
+            #wpgt-panel-styles .wpgt-panel-right { min-height: 300px; }
         }
         </style>
         <?php
@@ -1738,6 +1988,8 @@ class WPGT_Admin {
             'termbox_shadow'           => 'none',
             // ── Search widget ───────────────────────────────────────────────
             'search_max_width'         => '480',
+            'search_max_width_unit'    => 'px',
+            'search_input_height'      => '44',
             'search_results_max_height'=> '320',
             'search_input_bg'          => '#ffffff',
             'search_input_text_color'  => '#1e293b',
@@ -1826,6 +2078,7 @@ class WPGT_Admin {
             'term_card_shadow'             => ['none','sm','md','lg'],
             'termbox_shadow'               => ['none','sm','md','lg'],
             'search_results_shadow'        => ['none','sm','default','lg'],
+            'search_max_width_unit'        => ['px','%'],
         ];
 
         foreach ( $defaults as $key => $default ) {

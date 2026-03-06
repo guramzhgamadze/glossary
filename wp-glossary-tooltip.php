@@ -34,7 +34,7 @@ if ( version_compare( PHP_VERSION, '7.4', '<' ) ) {
     return; // Stop loading — prevents fatal errors on old PHP
 }
 
-define( 'WPGT_VERSION',     '2.0.1' );
+define( 'WPGT_VERSION',     '2.0.4' );
 define( 'WPGT_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'WPGT_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'WPGT_PLUGIN_FILE', __FILE__ );
@@ -385,11 +385,19 @@ class WP_Glossary_Tooltip {
         $si_pv = (int)($s['search_input_padding_v']??10); $si_ph = (int)($s['search_input_padding_h']??16);
         $sr_pv = (int)($s['search_result_padding_v']??10); $sr_ph = (int)($s['search_result_padding_h']??14);
         $srs   = $shadow_preset( 'search_results_shadow', $sr_shadows );
-        $smw   = (int)($s['search_max_width']??480);
-        $srh   = (int)($s['search_results_max_height']??320);
+        $smw      = (int)($s['search_max_width']??480);
+        $smw_unit = in_array($s['search_max_width_unit']??'px',['px','%'],true) ? ($s['search_max_width_unit']??'px') : 'px';
+        $srh      = (int)($s['search_results_max_height']??320);
+        $sih      = (int)($s['search_input_height']??44);
 
-        if ( $smw !== 480 ) $css .= '.wpgt-search-widget{max-width:' . $smw . 'px;}';
-        if ( $srh !== 320 ) $css .= '.wpgt-search-results{max-height:' . $srh . 'px;}';
+        if ( $smw !== 480 || $smw_unit !== 'px' )
+            $css .= '.wpgt-search-widget{width:100%;max-width:' . $smw . $smw_unit . ';}';
+        if ( $srh !== 320 )
+            $css .= '.wpgt-search-results{max-height:' . $srh . 'px;}';
+        if ( $sih !== 44 ) {
+            $pv = max(0, (int)round(($sih - 24) / 2));
+            $css .= '.wpgt-search-input{min-height:' . $sih . 'px;padding-top:' . $pv . 'px;padding-bottom:' . $pv . 'px;}';
+        }
 
         $css .= $rule( '.wpgt-search-input', [
             'border-color'  => $col('search_input_border'),

@@ -1,45 +1,67 @@
-/* WP Glossary Tooltip – Admin Scripts */
-jQuery( function( $ ) {
+/* WP Glossary Tooltip — Admin JS  v2.0.2 */
+jQuery(function ($) {
 
-    /* ----------------------------------------------------------------
-       Tab navigation
-    ---------------------------------------------------------------- */
-    var $tabs    = $( '.wpgt-tabs .nav-tab' );
-    var $panels  = $( '.wpgt-tab-content' );
+    /* ------------------------------------------------------------------
+       TAB PANEL SWITCHING
+       Topbar: .wpgt-topbar nav a.wpgt-tab-link[data-panel]
+       Panels: div.wpgt-tab-panel#wpgt-panel-*
+    ------------------------------------------------------------------ */
+    var $links  = $('.wpgt-topbar nav a.wpgt-tab-link');
+    var $panels = $('.wpgt-tab-panel');
 
-    function activateTab( hash ) {
-        var $panel = $( hash );
-        if ( ! $panel.length ) return;
-        $panels.hide();
-        $panel.show();
-        $tabs.removeClass( 'nav-tab-active' );
-        $tabs.filter( '[href="' + hash + '"]' ).addClass( 'nav-tab-active' );
-        sessionStorage.setItem( 'wpgt_active_tab', hash );
+    function activatePanel(id) {
+        if (!id || !$('#' + id).length) return;
+        $panels.removeClass('wpgt-active');
+        $links.removeClass('wpgt-active');
+        $('#' + id).addClass('wpgt-active');
+        $links.filter('[data-panel="' + id + '"]').addClass('wpgt-active');
+        sessionStorage.setItem('wpgt_panel', id);
+        if (window.history && history.replaceState) {
+            history.replaceState(null, '', location.pathname + location.search + '#' + id);
+        }
     }
 
-    // 1. URL query param wins (used after save redirect)
-    var urlParams    = new URLSearchParams( window.location.search );
-    var tabFromUrl   = urlParams.get( 'wpgt_tab' );
-    var tabFromSess  = sessionStorage.getItem( 'wpgt_active_tab' );
-    var initialTab   = ( tabFromUrl && $( '#' + tabFromUrl ).length )
-        ? '#' + tabFromUrl
-        : ( tabFromSess && $( tabFromSess ).length ? tabFromSess : null );
-
-    if ( initialTab ) {
-        activateTab( initialTab );
-    } else {
-        activateTab( $tabs.first().attr( 'href' ) );
-    }
-
-    $tabs.on( 'click', function( e ) {
+    $links.on('click', function (e) {
         e.preventDefault();
-        activateTab( $( this ).attr( 'href' ) );
-    } );
+        activatePanel($(this).data('panel'));
+    });
 
-    /* ----------------------------------------------------------------
-       WordPress color picker — only the main settings tabs
-       (Styles tab initialises its own pickers separately)
-    ---------------------------------------------------------------- */
-    $( '.wpgt-color-picker' ).wpColorPicker();
+    /* Priority: URL hash → sessionStorage → default (general) */
+    var fromHash = (location.hash || '').replace('#', '');
+    var fromSess = sessionStorage.getItem('wpgt_panel') || '';
+    var initial  = ($('#' + fromHash).hasClass('wpgt-tab-panel')) ? fromHash
+                 : ($('#' + fromSess).hasClass('wpgt-tab-panel')) ? fromSess
+                 : 'wpgt-panel-general';
+    activatePanel(initial);
 
-} );
+    /* ------------------------------------------------------------------
+       SORT TAB — jQuery UI Sortable
+    ------------------------------------------------------------------ */
+    if ($('#wpgt-sortable').length) {
+        $('#wpgt-sortable').sortable({
+            placeholder: 'wpgt-sort-ph',
+            handle: '.wpgt-drag-icon',
+            update: function () {
+                var ids = [];
+                $('#wpgt-sortable li').each(function () {
+                    ids.push($(this).data('id'));
+                });
+                $.post(ajaxurl, {
+                    action:   'wpgt_save_order',
+                    order:    ids,
+                    _wpnonce: wpgtAdmin.sortNonce
+                }, function (r) {
+                    if (r.success) {
+                        $('#wpgt-order-saved').fadeIn().delay(2000).fadeOut();
+                    }
+                });
+            }
+        });
+    }
+
+    /* ------------------------------------------------------------------
+       WORDPRESS COLOR PICKER — standard settings tabs
+    ------------------------------------------------------------------ */
+    $('.wpgt-color-picker').wpColorPicker();
+
+});

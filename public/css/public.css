@@ -340,7 +340,7 @@
 /* Magnifying glass — absolute-positioned left of input */
 .wpgt-search-icon {
     position: absolute;
-    left: 13px;
+    left: 14px;
     top: 50%;
     transform: translateY(-50%);
     color: #94a3b8;
@@ -348,7 +348,8 @@
     align-items: center;
     pointer-events: none;
     transition: color 0.15s;
-    z-index: 1;
+    z-index: 2;
+    line-height: 0;
 }
 .wpgt-search-widget.wpgt-loading .wpgt-search-icon svg {
     animation: wpgt-spin 0.65s linear infinite;
@@ -357,7 +358,8 @@
 
 .wpgt-search-input {
     width: 100%;
-    padding: 10px 38px 10px 38px; /* left space for icon, right space for clear */
+    padding: 10px 38px 10px 52px; /* 14px left + 16px icon + 22px breathing room */
+    box-sizing: border-box;
     font-size: 0.9375rem;
     border: 1.5px solid #d1d5db;
     border-radius: 6px;
