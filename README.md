@@ -7,7 +7,8 @@ A WordPress glossary plugin that automatically adds hover tooltips to defined te
 **License:** GPLv2 or later  
 **Requires WordPress:** 6.0+  
 **Requires PHP:** 8.0+  
-**Tested up to:** 6.7
+**Tested up to:** 6.7  
+**Current Version:** 2.0.14
 
 ---
 
@@ -18,7 +19,7 @@ A WordPress glossary plugin that automatically adds hover tooltips to defined te
 3. [Creating Glossary Terms](#creating-glossary-terms)
 4. [Settings Reference](#settings-reference)
 5. [Shortcodes](#shortcodes)
-6. [Styling & Customisation](#styling--customisation)
+6. [Styles Tab](#styles-tab)
 7. [Import & Export](#import--export)
 8. [REST API](#rest-api)
 9. [Georgian Language Support](#georgian-language-support)
@@ -36,13 +37,14 @@ A WordPress glossary plugin that automatically adds hover tooltips to defined te
 - **Hover or Click** — choose whether tooltips open on mouse hover or on click
 - **"Read More" Link** — optional link inside the tooltip pointing to the full term page
 - **Glossary Index** — `[wpgt_glossary]` shortcode renders a full A–Z index with alphabet navigation
-- **Live Search Widget** — `[wpgt_search]` shortcode renders an AJAX-powered search box
+- **Live Search Widget** — `[wpgt_search]` shortcode renders an AJAX-powered search box with priority-ranked results (starts-with ranked above contains)
 - **Single Term Card** — `[wpgt_term]` shortcode renders an inline definition card for one term
+- **Visual Styles Editor** — full-screen two-panel Styles tab with live preview; controls every visual property of every component with no CSS required
 - **Excel Import / Export** — bulk-manage all terms via `.xlsx` files
 - **REST API** — full read-only JSON API at `/wp-json/wpgt/v1/`
 - **Elementor Compatible** — tooltips work inside Elementor widgets; shortcodes work via the Elementor Shortcode widget
 - **Accessible** — `role="tooltip"`, `aria-describedby`, full keyboard support (Tab, Escape, Arrow keys)
-- **Mobile Friendly** — tooltip width clamps to viewport width on small screens
+- **Mobile Friendly** — tooltip width clamps to viewport width on small screens; search input uses `font-size: 16px` on mobile to prevent iOS Safari auto-zoom
 - **Performant** — all terms loaded once and cached; tokenisation-based matching with O(1) hash-map lookup
 
 ---
@@ -70,7 +72,7 @@ Go to **Glossary → Add New Term** in the WordPress admin.
 | **Content** | Full definition shown on the term's individual page. Supports the block editor. |
 | **Excerpt** | Used as the tooltip text if no custom Tooltip Text is set. |
 | **Tooltip Text** | Short text shown inside the tooltip bubble (1–2 sentences recommended). If empty, the Excerpt is used. If the Excerpt is also empty, the first 25 words of the Content are used. |
-| **Synonyms / Aliases** | Comma-separated list of alternative words that should also trigger this tooltip. Example: `API, Application Programming Interface`. Each synonym is also morphologically declined (for Georgian). |
+| **Synonyms / Aliases** | Comma-separated list of alternative words that should also trigger this tooltip. Each synonym is also morphologically declined (for Georgian). |
 | **Related Terms (IDs)** | Comma-separated post IDs of related terms. Currently stored for API use. |
 | **Categories** | Assign the term to one or more Glossary Categories. Used to filter `[wpgt_glossary]` output. |
 
@@ -85,7 +87,7 @@ Go to **Glossary → Add New Term** in the WordPress admin.
 
 ## Settings Reference
 
-Navigate to **Glossary → Settings** to find all options, organised into five tabs.
+Navigate to **Glossary → Settings** to find all options, organised into tabs.
 
 ---
 
@@ -95,10 +97,10 @@ Navigate to **Glossary → Settings** to find all options, organised into five t
 |---|---|---|
 | **Enable Tooltips** | On | Master switch. Uncheck to disable all tooltip injection site-wide without deactivating the plugin. |
 | **Parse Post Types** | Post, Page | Which post types the plugin should scan for glossary terms. Tick any custom post types you want included. |
-| **First Occurrence Only** | On | When on, each term is highlighted only the first time it appears on a page. Subsequent occurrences are left as plain text. Turn off to highlight every occurrence. |
-| **Case Sensitive** | Off | When off, "Yoga", "yoga", and "YOGA" all match the same term. Turn on if you need exact capitalisation matching. |
-| **Exclude Headings** | On | When on, terms inside `<h1>`–`<h6>` tags are not highlighted. Recommended to keep headings clean. |
-| **Exclude Links** | On | When on, terms that are already inside an `<a>` tag are not highlighted again, preventing nested links. |
+| **First Occurrence Only** | On | When on, each term is highlighted only the first time it appears on a page. Turn off to highlight every occurrence. |
+| **Case Sensitive** | Off | When off, "Yoga", "yoga", and "YOGA" all match the same term. |
+| **Exclude Headings** | On | When on, terms inside `<h1>`–`<h6>` tags are not highlighted. |
+| **Exclude Links** | On | When on, terms already inside an `<a>` tag are not highlighted again. |
 
 ---
 
@@ -108,18 +110,18 @@ Navigate to **Glossary → Settings** to find all options, organised into five t
 
 | Setting | Default | Description |
 |---|---|---|
-| **Open On** | Hover | `Hover` — tooltip appears when the mouse moves over the word. `Click` — tooltip appears only when the word is clicked (better for mobile-heavy sites). |
-| **Position** | Top | Whether the tooltip bubble prefers to appear above (`top`) or below (`bottom`) the trigger word. The plugin will flip automatically if there is not enough space. |
-| **Show "Read More" Link** | On | Shows a "Read more →" link at the bottom of the tooltip pointing to the full glossary term page. |
+| **Open On** | Hover | `Hover` — tooltip appears on mouseover. `Click` — tooltip appears on click (better for mobile-heavy sites). |
+| **Position** | Top | Whether the tooltip bubble prefers to appear above or below the trigger word. Flips automatically if there is not enough space. |
+| **Show "Read More" Link** | On | Shows a link at the bottom of the tooltip pointing to the full glossary term page. |
 | **Open Link in New Tab** | On | The "Read more" link opens in a new browser tab. |
 
 #### Appearance
 
 | Setting | Default | Description |
 |---|---|---|
-| **Theme** | Dark | Base colour palette. `Dark` = dark navy background with light text. `Light` = white background with dark text. `Branded` = uses your Brand Color as the background. |
-| **Brand / Underline Color** | `#2563eb` | Controls the dashed underline under trigger words, hover colour, and the background of the Branded theme. |
-| **"Read More" Link Color** | _(theme default)_ | Override the colour of the "Read more" link inside the tooltip. Leave blank to use the theme default. |
+| **Theme** | Dark | Base colour palette. `Dark` = dark navy background. `Light` = white background. `Branded` = uses Brand Color as background. |
+| **Brand / Underline Color** | `#2563eb` | Controls the dashed underline on trigger words, hover colour, and the Branded theme background. |
+| **"Read More" Link Color** | _(theme default)_ | Override the colour of the "Read more" link inside the tooltip. |
 
 ---
 
@@ -127,7 +129,7 @@ Navigate to **Glossary → Settings** to find all options, organised into five t
 
 | Setting | Default | Description |
 |---|---|---|
-| **Glossary Slug** | `glossary` | The URL path for the glossary archive, e.g. `yoursite.com/glossary/`. After changing this, go to **Settings → Permalinks** and click Save to flush rewrite rules. |
+| **Glossary Slug** | `glossary` | The URL path for the glossary archive. After changing, flush rewrite rules via **Settings → Permalinks → Save**. |
 | **Index Columns** | `3` | How many columns the `[wpgt_glossary]` shortcode uses for its term grid. Options: 1–4. |
 | **Show A–Z Bar** | On | Whether the alphabet navigation bar is shown above the `[wpgt_glossary]` output. |
 
@@ -135,13 +137,38 @@ Navigate to **Glossary → Settings** to find all options, organised into five t
 
 ### Advanced Tab
 
-Shows the REST API endpoint URLs for your installation and a button to flush WordPress rewrite rules manually if needed.
+Shows the REST API endpoint URLs for your installation and a button to flush WordPress rewrite rules manually.
 
 ---
 
 ### Import / Export Tab
 
 See the [Import & Export](#import--export) section below.
+
+---
+
+### Styles Tab
+
+A full-screen visual editor with a live preview panel on the right. Every visual property of every plugin component can be controlled here with no CSS required. Changes are previewed instantly; click **Save Styles** to persist them.
+
+The Styles tab is organised into accordion cards:
+
+| Card | Controls |
+|---|---|
+| **Global Font** | Choose a Google Font (or enter a custom font name) applied to all plugin elements |
+| **Trigger Word** | Underline colour, hover colour, underline style/width, font weight/size/transform |
+| **Tooltip Bubble** | Background, text/title/link colours, border, padding, radius, font size, line height, max width, shadow, "Read More" button text |
+| **[wpgt_glossary] Index** | A–Z bar (background, border, link colours, radius, padding, justify), letter headings (colour, size, weight, borders), term cards (background, border, hover border, radius, shadow, padding), term name (colour, size, weight), excerpt (colour, size) |
+| **[wpgt_term] — Term Box** | Background, left border colour/width, title colour/size/weight, definition colour/size, radius, padding, shadow |
+| **[wpgt_search] — Search Widget** | Widget max-width, input height, input background/text/border/focus/radius/size/padding, placeholder text, icon colours, results dropdown background/height/radius/shadow, result item colours (text, hover bg, hover colour, title, excerpt, match highlight, no-results), separator colour, result padding |
+
+#### How styles are applied to the frontend
+
+Saved styles are output as an inline `<style>` block appended directly after `public.css` via `wp_add_inline_style()`. This guarantees they always load in the correct cascade order, independent of page caching plugins. All search widget rules use `!important` to beat any theme CSS that globally targets form inputs.
+
+#### Overriding with custom CSS
+
+The Styles tab covers the most common cases. For anything beyond it, target CSS classes directly in **Appearance → Customize → Additional CSS** or your child theme's `style.css`. See [Styling & Customisation](#styling--customisation) below for class references.
 
 ---
 
@@ -159,24 +186,19 @@ Renders a full A–Z glossary index with an alphabet navigation bar and a grid o
 
 | Attribute | Default | Accepts | Description |
 |---|---|---|---|
-| `columns` | `3` (from Settings) | `1` `2` `3` `4` | Number of columns in the term grid. Collapses to fewer columns automatically on mobile. |
-| `show_alphabet` | `true` (from Settings) | `true` `false` | Show or hide the A–Z navigation bar at the top. |
-| `category` | _(all)_ | Category slug | Show only terms belonging to this Glossary Category. Use comma-separated slugs for multiple categories. |
-| `orderby` | `title` | `title` `date` | Sort terms alphabetically by title, or by date (newest first). |
+| `columns` | `3` (from Settings) | `1` `2` `3` `4` | Number of columns in the term grid. Collapses automatically on mobile. |
+| `show_alphabet` | `true` (from Settings) | `true` `false` | Show or hide the A–Z navigation bar. |
+| `category` | _(all)_ | Category slug | Show only terms in this Glossary Category. Comma-separate for multiple. |
+| `orderby` | `title` | `title` `date` | Sort alphabetically or by date (newest first). |
 
 **Examples:**
 
 ```
 [wpgt_glossary]
-
 [wpgt_glossary columns="2"]
-
 [wpgt_glossary show_alphabet="false" columns="1"]
-
 [wpgt_glossary category="yoga-basics"]
-
 [wpgt_glossary category="yoga-basics,philosophy" columns="3"]
-
 [wpgt_glossary orderby="date" columns="2"]
 ```
 
@@ -184,15 +206,10 @@ Renders a full A–Z glossary index with an alphabet navigation bar and a grid o
 
 ```html
 <div class="wpgt-glossary-index" data-columns="3">
-
-  <!-- A–Z navigation bar -->
   <nav class="wpgt-alphabet-bar">
     <a href="#wpgt-letter-A" class="wpgt-az-link">A</a>
-    <a href="#wpgt-letter-B" class="wpgt-az-link">B</a>
     <!-- ... -->
   </nav>
-
-  <!-- One section per starting letter -->
   <section class="wpgt-letter-group" id="wpgt-letter-A">
     <h3 class="wpgt-letter-heading">A</h3>
     <ul class="wpgt-term-list wpgt-columns-3">
@@ -200,10 +217,8 @@ Renders a full A–Z glossary index with an alphabet navigation bar and a grid o
         <a href="/glossary/asana/" class="wpgt-term-link">Asana</a>
         <p class="wpgt-term-excerpt">A physical posture in yoga…</p>
       </li>
-      <!-- more terms -->
     </ul>
   </section>
-
 </div>
 ```
 
@@ -211,7 +226,7 @@ Renders a full A–Z glossary index with an alphabet navigation bar and a grid o
 
 ### `[wpgt_term]` — Single Term Card
 
-Renders an inline definition card for one specific term. Useful for sidebar widgets, callout boxes, or highlighting a key term inside an article without interrupting the reading flow.
+Renders an inline definition card for one specific term.
 
 ```
 [wpgt_term id="123"]
@@ -222,18 +237,10 @@ Renders an inline definition card for one specific term. Useful for sidebar widg
 
 | Attribute | Description |
 |---|---|
-| `id` | The WordPress post ID of the glossary term. Find it in the URL when editing the term: `post.php?post=123`. |
-| `slug` | The term's URL slug. Slower than using `id` (requires a database query by name). |
+| `id` | The WordPress post ID of the glossary term. |
+| `slug` | The term's URL slug. Slower than `id` (requires a DB query by name). |
 
 Either `id` or `slug` must be provided. If both are given, `id` takes priority.
-
-**Examples:**
-
-```
-[wpgt_term id="456"]
-
-[wpgt_term slug="pranayama"]
-```
 
 **Output structure:**
 
@@ -252,7 +259,7 @@ Either `id` or `slug` must be provided. If both are given, `id` takes priority.
 
 ### `[wpgt_search]` — Live Search Widget
 
-Renders a search input box. As the user types (after 2 characters, with a 280ms debounce), results are fetched from the REST API and shown in a dropdown. Results are clickable links to the full term page.
+Renders a search input. After 2 characters (280ms debounce), results are fetched from the REST API and shown in a dropdown. Results are **priority-ranked**: titles that start with the query appear first, followed by titles that contain the query elsewhere.
 
 ```
 [wpgt_search]
@@ -263,7 +270,7 @@ Renders a search input box. As the user types (after 2 characters, with a 280ms 
 
 | Attribute | Default | Description |
 |---|---|---|
-| `placeholder` | `Search glossary…` | The placeholder text shown inside the search input. |
+| `placeholder` | Value from Styles tab, or `Search glossary…` | Placeholder text shown inside the input. The default can be set globally in **Styles → Search Widget → Placeholder Text** without touching each shortcode. |
 
 **Keyboard navigation:**
 
@@ -272,11 +279,17 @@ Renders a search input box. As the user types (after 2 characters, with a 280ms 
 - `Escape` — close the dropdown and return focus to the input
 - `Enter` — follow the focused result link
 
+**iOS Safari note:** The input always renders at `font-size: 16px` on screens ≤ 768px to prevent iOS Safari from auto-zooming when the field is tapped.
+
 **Output structure:**
 
 ```html
 <div class="wpgt-search-widget">
-  <input type="search" class="wpgt-search-input" placeholder="Search glossary…" />
+  <div class="wpgt-search-combobox">
+    <span class="wpgt-search-icon">…</span>
+    <input type="search" class="wpgt-search-input" placeholder="Search glossary…" />
+    <button class="wpgt-search-clear" hidden>…</button>
+  </div>
   <div class="wpgt-search-results" role="listbox">
     <a href="/glossary/asana/" class="wpgt-search-result-item" role="option">
       <span class="wpgt-search-result-title">Asana</span>
@@ -290,230 +303,74 @@ Renders a search input box. As the user types (after 2 characters, with a 280ms 
 
 ## Styling & Customisation
 
-### Method 1: Settings Panel (No Code)
+The recommended approach is the **Styles tab** (see above). For advanced overrides, target CSS classes directly.
 
-The quickest way to customise the look is via **Glossary → Settings → Tooltip tab**:
-
-- Choose a **Theme**: Dark, Light, or Branded
-- Set a **Brand Color** — this controls the underline on trigger words, the hover colour, and the Branded theme background
-- Set a custom **"Read More" link color** to override the theme default
-
-### Method 2: CSS Custom Properties
-
-The plugin exposes CSS custom properties on `:root` that you can override in your theme's stylesheet or in **Appearance → Customize → Additional CSS**:
+### CSS Custom Properties
 
 ```css
 :root {
     --wpgt-brand:      #e85d4a;   /* underline + hover colour on trigger words */
     --wpgt-radius:     10px;      /* border-radius of the tooltip bubble */
-    --wpgt-shadow:     0 4px 16px rgba(0,0,0,.25); /* tooltip drop shadow */
-    --wpgt-transition: 0.25s ease; /* fade/slide animation speed */
+    --wpgt-shadow:     0 4px 16px rgba(0,0,0,.25);
+    --wpgt-transition: 0.25s ease;
 }
 ```
 
-### Method 3: Targeting CSS Classes Directly
-
-Every element the plugin outputs has a stable CSS class. Add overrides in **Appearance → Customize → Additional CSS** or your child theme's `style.css`.
-
-#### Trigger Words (highlighted terms in content)
+### Trigger Words
 
 ```css
-/* The underlined term in body text */
-.wpgt-tooltip-trigger {
-    border-bottom-color: #e85d4a;
-    font-weight: 600;
-}
-
-/* Trigger word when hovered/focused */
+.wpgt-tooltip-trigger { border-bottom-color: #e85d4a; font-weight: 600; }
 .wpgt-tooltip-trigger:hover,
-.wpgt-tooltip-trigger:focus {
-    color: #e85d4a;
-    background: rgba(232, 93, 74, 0.08);
-    border-radius: 2px;
-}
+.wpgt-tooltip-trigger:focus { color: #e85d4a; }
 ```
 
-#### Tooltip Bubble
+### Tooltip Bubble
 
 ```css
-/* The popup bubble itself */
-.wpgt-tooltip-bubble {
-    border-radius: 10px;
-    font-size: 0.9rem;
-}
+.wpgt-tooltip-bubble { border-radius: 10px; font-size: 0.9rem; }
+.wpgt-tooltip-bubble .wpgt-tooltip-title { font-size: 1rem; }
+.wpgt-tooltip-bubble .wpgt-tooltip-see-more { font-size: 0.75rem; }
 
-/* Term title inside the tooltip */
-.wpgt-tooltip-bubble .wpgt-tooltip-title {
-    font-size: 1rem;
-    letter-spacing: 0.01em;
-}
-
-/* Definition text inside the tooltip */
-.wpgt-tooltip-bubble .wpgt-tooltip-text {
-    opacity: 0.9;
-}
-
-/* "Read more →" link */
-.wpgt-tooltip-bubble .wpgt-tooltip-see-more {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
+/* Per-theme overrides */
+.wpgt-theme-dark  { background: #0f172a !important; }
+.wpgt-theme-light { border: 2px solid #e85d4a; }
 ```
 
-#### Per-Theme Overrides
-
-Target a specific theme without affecting the others:
+### Glossary Index
 
 ```css
-/* Override dark theme only */
-.wpgt-theme-dark {
-    background: #0f172a !important;  /* darker background */
-}
-.wpgt-theme-dark .wpgt-tooltip-title {
-    color: #fbbf24;  /* gold title */
-}
-
-/* Override light theme only */
-.wpgt-theme-light {
-    border: 2px solid #e85d4a;
-}
-
-/* Override branded theme only */
-.wpgt-theme-branded .wpgt-tooltip-see-more {
-    text-decoration: underline;
-    font-weight: 700;
-}
+.wpgt-alphabet-bar    { background: #fff; border: 2px solid #e2e8f0; }
+.wpgt-az-link         { border-radius: 50%; }
+.wpgt-az-link:hover   { background: #e85d4a; }
+.wpgt-letter-heading  { font-size: 2rem; color: #e85d4a; }
+.wpgt-term-item       { background: #fff; border-left: 3px solid #e85d4a; }
+.wpgt-term-link       { color: #1a1a1a; }
+.wpgt-term-excerpt    { color: #888; }
 ```
 
-#### Glossary Index (`[wpgt_glossary]`)
+### Term Box
 
 ```css
-/* The outer wrapper */
-.wpgt-glossary-index { margin: 2em 0; }
-
-/* A–Z navigation bar */
-.wpgt-alphabet-bar {
-    background: #fff;
-    border: 2px solid #e2e8f0;
-    padding: 12px 16px;
-}
-
-/* Individual letter buttons in the A–Z bar */
-.wpgt-az-link {
-    width: 36px;
-    height: 36px;
-    font-size: 0.9rem;
-    border-radius: 50%;  /* make them circular */
-}
-
-.wpgt-az-link:hover,
-.wpgt-az-link:focus {
-    background: #e85d4a;
-}
-
-/* Section heading (A, B, C…) */
-.wpgt-letter-heading {
-    font-size: 2rem;
-    color: #e85d4a;
-    border-bottom-color: #e85d4a;
-}
-
-/* Individual term card */
-.wpgt-term-item {
-    background: #fff;
-    border-left: 3px solid #e85d4a;
-    border-top: none;
-    border-right: none;
-    border-bottom: none;
-    border-radius: 0;
-    padding: 10px 14px;
-}
-
-/* Term name link */
-.wpgt-term-link {
-    color: #1a1a1a;
-    font-size: 1rem;
-}
-
-/* Short description below term name */
-.wpgt-term-excerpt {
-    color: #888;
-}
+.wpgt-term-box               { border-left-color: #e85d4a; border-left-width: 6px; background: #fffbf5; }
+.wpgt-term-box__title a      { color: #1a1a1a; }
+.wpgt-term-box__definition   { color: #555; }
 ```
 
-#### Single Term Card (`[wpgt_term]`)
+### Search Widget
 
 ```css
-/* The card container */
-.wpgt-term-box {
-    border-left-color: #e85d4a;
-    border-left-width: 6px;
-    background: #fffbf5;
-    border-radius: 6px;
-}
-
-/* Term title */
-.wpgt-term-box__title a {
-    color: #1a1a1a;
-    font-size: 1.1rem;
-}
-
-/* Definition text */
-.wpgt-term-box__definition {
-    color: #555;
-    font-size: 0.95rem;
-}
-```
-
-#### Search Widget (`[wpgt_search]`)
-
-```css
-/* Search input field */
-.wpgt-search-input {
-    border-radius: 30px;      /* pill-shaped input */
-    padding: 12px 20px;
-    font-size: 1rem;
-    border-color: #d1d5db;
-}
-
-.wpgt-search-input:focus {
-    border-color: #e85d4a;
-    box-shadow: 0 0 0 3px rgba(232, 93, 74, 0.15);
-}
-
-/* Dropdown results panel */
-.wpgt-search-results {
-    border-radius: 12px;
-    border-color: #e2e8f0;
-    box-shadow: 0 8px 32px rgba(0,0,0,.12);
-}
-
-/* Individual result row */
-.wpgt-search-result-item:hover,
-.wpgt-search-result-item:focus {
-    background: #fff5f3;
-    color: #e85d4a;
-}
-
-/* Result title */
-.wpgt-search-result-title {
-    font-size: 0.95rem;
-}
-
-/* Result excerpt */
-.wpgt-search-result-excerpt {
-    color: #999;
-}
+.wpgt-search-input        { border-radius: 30px; border-color: #d1d5db; }
+.wpgt-search-input:focus  { border-color: #e85d4a; box-shadow: 0 0 0 3px rgba(232,93,74,.15); }
+.wpgt-search-results      { border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,.12); }
+.wpgt-search-result-item:hover { background: #fff5f3; color: #e85d4a; }
+.wpgt-search-match        { color: #e85d4a; } /* highlighted portion of matched text */
 ```
 
 ### Responsive Breakpoints
 
-The plugin's built-in responsive rules:
-
 | Breakpoint | Behaviour |
 |---|---|
-| `≤ 768px` | 3-column and 4-column grids collapse to 2 columns |
+| `≤ 768px` | 3-col and 4-col grids collapse to 2 columns; search input `font-size` raised to 16px |
 | `≤ 480px` | All multi-column grids collapse to 1 column |
 | `≤ 600px` | Tooltip font size reduces slightly; padding tightens |
 | All sizes | Tooltip bubble never exceeds `100vw - 24px` |
@@ -526,35 +383,33 @@ Navigate to **Glossary → Settings → Import / Export**.
 
 ### Export
 
-Click **Download Excel (.xlsx)** to download all published glossary terms as a spreadsheet. The file has two columns:
+Click **Download Excel (.xlsx)** to download all published glossary terms. The file has two columns:
 
 | word | explanation |
 |---|---|
 | Asana | A physical posture in yoga… |
 | Pranayama | Breath control… |
 
-Open in Microsoft Excel, Google Sheets, or LibreOffice Calc.
-
 ### Import
 
-Prepare an `.xlsx` file with two columns in row 1 as headers: `word` and `explanation`. Then:
+Prepare an `.xlsx` file with `word` and `explanation` as column headers. Then:
 
 1. Click **Choose File** and select your `.xlsx`
 2. Click **Import Excel**
 3. The plugin reports how many terms were **created** and how many were **updated**
 
 **Rules:**
-- If a term with the same title already exists, it is **updated** (tooltip text replaced)
-- If no matching term exists, a new one is **created** and published immediately
+- Existing terms with the same title are **updated** (tooltip text replaced)
+- New terms are **created** and published immediately
 - The `word` column is required; `explanation` can be empty
-- After import, declined forms are automatically regenerated for all Georgian terms
+- Declined forms are automatically regenerated for all imported terms
 
-**Accepted column header names** (case-insensitive):
+**Accepted header names** (case-insensitive):
 
-For the word column: `word`, `title`, `term`, `name`  
-For the explanation column: `explanation`, `tooltip_text`, `definition`, `description`, `meaning`
+- Word column: `word`, `title`, `term`, `name`
+- Explanation column: `explanation`, `tooltip_text`, `definition`, `description`, `meaning`
 
-If no recognised headers are found, the plugin assumes column A = word, column B = explanation (no header row).
+If no recognised headers are found, column A = word, column B = explanation (no header row assumed).
 
 ---
 
@@ -562,13 +417,11 @@ If no recognised headers are found, the plugin assumes column A = word, column B
 
 Base URL: `https://yoursite.com/wp-json/wpgt/v1/`
 
-All endpoints are public and read-only (no authentication required).
+All endpoints are public and read-only.
 
 ### `GET /terms`
 
 Returns a paginated list of all published glossary terms.
-
-**Query parameters:**
 
 | Parameter | Default | Description |
 |---|---|---|
@@ -576,43 +429,17 @@ Returns a paginated list of all published glossary terms.
 | `page` | `1` | Page number |
 | `category` | — | Filter by Glossary Category slug |
 
-**Example:**
-```
-GET /wp-json/wpgt/v1/terms?per_page=10&page=2
-GET /wp-json/wpgt/v1/terms?category=yoga-basics
-```
-
-**Response headers:**
-- `X-WP-Total` — total number of matching terms
-- `X-WP-TotalPages` — total number of pages
-
----
+Response headers: `X-WP-Total`, `X-WP-TotalPages`
 
 ### `GET /terms/{id}`
 
-Returns a single term by its WordPress post ID.
-
-**Example:**
-```
-GET /wp-json/wpgt/v1/terms/123
-```
-
----
+Returns a single term by WordPress post ID.
 
 ### `GET /search?q={query}`
 
-Searches terms by relevance. Minimum query length: 2 characters. Returns up to 10 results.
-
-**Example:**
-```
-GET /wp-json/wpgt/v1/search?q=yoga
-```
-
----
+Searches terms by relevance. Minimum query length: 2 characters. Returns up to 10 results, ranked so that titles **starting with** the query appear before titles that merely **contain** it.
 
 ### Response Schema
-
-All endpoints return terms in this format:
 
 ```json
 {
@@ -620,7 +447,7 @@ All endpoints return terms in this format:
   "title": "Asana",
   "slug": "asana",
   "tooltip_text": "A physical posture in yoga…",
-  "content": "<p>Full HTML content of the term page…</p>",
+  "content": "<p>Full HTML content…</p>",
   "excerpt": "Plain text excerpt…",
   "url": "https://yoursite.com/glossary/asana/",
   "synonyms": ["pose", "posture"],
@@ -642,48 +469,17 @@ The plugin includes a morphological engine (`class-georgian-stemmer.php`) that h
 | Class 2 | Truncating vowel-final (ends in -ა or -ე) | მთა, გზა, ღმერთე |
 | Class 3 | Non-truncating vowel-final (ends in -ო or -უ) | სიბრძნო, ბარდო |
 
-For each term, the engine generates all declined forms — nominative, ergative, dative, genitive, instrumental, adverbial, vocative — plus all postposition combinations (-ში, -ზე, -თან, -იდან, -სთვის, -ისგან, -ამდე, -ივით, etc.) and plural forms with their full postposition set. This produces **78–131 unique forms per term**, all stored in the database at save time.
+For each term, the engine generates all declined forms — nominative, ergative, dative, genitive, instrumental, adverbial, vocative — plus all postposition combinations (-ში, -ზე, -თან, -იდან, -სთვის, -ისგან, -ამდე, -ივით, etc.) and plural forms. This produces **78–131 unique forms per term**, stored in the database at save time.
 
-During content parsing, a tokeniser splits the page text into Georgian word tokens and looks each one up in a hash map (token → term ID) in O(1) time. This means **performance does not degrade** as the glossary grows.
-
-### Example: ბჰაკტი
-
-Defining the term **ბჰაკტი** will automatically highlight all of these forms wherever they appear:
-
-| Form | Description |
-|---|---|
-| ბჰაკტი | Nominative |
-| ბჰაკტმა | Ergative |
-| ბჰაკტს | Dative |
-| ბჰაკტის | Genitive |
-| ბჰაკტით | Instrumental |
-| ბჰაკტად | Adverbial |
-| ბჰაკტო | Vocative |
-| ბჰაკტში | Locative (dative + -ში) |
-| ბჰაკტზე | Superessive (dative + -ზე) |
-| ბჰაკტსთან | Comitative |
-| ბჰაკტსთვის | Benefactive (dative + -სთვის) |
-| ბჰაკტისგან | Ablative |
-| ბჰაკტისთვის | Benefactive (genitive + -თვის) |
-| ბჰაკტიდან | Elative |
-| ბჰაკტები | Plural nominative |
-| ბჰაკტებში | Plural locative |
-| ბჰაკტებისგან | Plural ablative |
-| … | All other plural postposition forms |
+During content parsing, a tokeniser splits text into Georgian word tokens and looks each one up in a hash map (token → term ID) in O(1) time. **Performance does not degrade as the glossary grows.**
 
 ### Syncope
 
-Some native Georgian words syncopate (drop a vowel) in certain forms, e.g. **წყალი** → **წყლის** (genitive). The engine handles this automatically. Sanskrit loanwords like **ბჰაკტი** or **ასანა** do not syncopate — the engine detects this by checking whether the syncopated stem would produce 4 or more consecutive consonants, which is not a valid Georgian stem.
+Some native Georgian words syncopate in certain forms (e.g. **წყალი** → **წყლის**). The engine handles this automatically. Sanskrit loanwords (e.g. **ბჰაკტი**, **ასანა**) do not syncopate — the engine detects this by checking whether the syncopated stem would produce 4+ consecutive consonants.
 
 ### Minimum Stem Length
 
-A minimum stem length of **3 characters** is enforced. Terms shorter than this (e.g. 2-character abbreviations) will not be indexed to prevent over-matching common syllables. If you have very short terms, add a longer synonym.
-
-### After Saving Terms
-
-When you save or update a glossary term, its declined forms are automatically regenerated. If you make bulk changes via Import, the forms are regenerated for every imported term immediately.
-
-If you ever need to regenerate all declined forms manually (e.g. after a plugin update that improves the morphology engine), go to **Glossary → Settings → Sort Terms** and click **Regenerate All Declined Forms**.
+A minimum stem length of **3 characters** is enforced. Terms shorter than this will not be indexed. For very short terms, add a longer synonym.
 
 ---
 
@@ -691,7 +487,7 @@ If you ever need to regenerate all declined forms manually (e.g. after a plugin 
 
 ```
 wp-glossary-tooltip/
-├── wp-glossary-tooltip.php            # Plugin bootstrap, main class, asset enqueuing
+├── wp-glossary-tooltip.php            # Plugin bootstrap, main class, asset enqueuing, frontend style output
 ├── includes/
 │   ├── class-post-type.php            # Custom post type & taxonomy; declined form generation
 │   ├── class-settings.php             # Settings option wrapper (get/update/defaults)
@@ -700,9 +496,9 @@ wp-glossary-tooltip/
 │   ├── class-shortcodes.php           # [wpgt_glossary], [wpgt_term], [wpgt_search]
 │   └── class-rest-api.php             # REST endpoints: /terms, /terms/{id}, /search
 ├── admin/
-│   ├── class-admin.php                # Settings UI, meta boxes, columns, import/export
+│   ├── class-admin.php                # Settings UI, Styles tab, meta boxes, import/export
 │   ├── admin.css                      # Admin page styles
-│   └── admin.js                       # Tab navigation, WP colour picker init
+│   └── admin.js                       # Tab navigation, colour picker init
 └── public/
     ├── css/public.css                 # All frontend styles (tooltip, index, search, term box)
     └── js/public.js                   # Tooltip show/hide, positioning, search widget logic
@@ -712,21 +508,55 @@ wp-glossary-tooltip/
 
 ## Changelog
 
+### 2.0.14
+- **Search ranking** — results now prioritise titles that start with the query before titles that merely contain it (two-pass SQL: `LIKE 'q%'` merged with `LIKE '%q%'`)
+
+### 2.0.13
+- **iOS Safari zoom fix** — search input uses `font-size: 16px` on screens ≤ 768px to prevent Safari auto-zoom on tap
+- **Admin text fields** — Placeholder Text, "Read More" Text and all `wpgt-field-text` inputs no longer stretch full-width; they size to content (`width: auto; flex: 0 0 auto`)
+
+### 2.0.12
+- **Select dropdowns** — Style tab dropdowns (Transform, Shadow, Weight, etc.) no longer stretch full-width; removed from `flex: 1` group, set to `width: auto`
+
+### 2.0.11 / 2.0.10 / 2.0.9
+- Iterative fixes to admin select and text field widths (specificity cascade resolution)
+
+### 2.0.8
+- **Color picker z-index** — switched picker holder from `position: fixed` to `position: absolute` with `z-index: 99999` on the open container; pickers now open correctly in all accordion cards and no longer appear behind the save bar
+- **Save bar z-index** — reduced from 99 to 9 so it no longer sits above open color pickers
+- **Placeholder Text field** — added to Search Widget card in Styles tab; wired to live preview and frontend shortcode; overridable per-shortcode with `[wpgt_search placeholder="…"]`
+
+### 2.0.7
+- **Dotted border fix** — theme CSS was overriding `border-style` on `.wpgt-search-input`; added `border-style: solid !important` and `outline: none !important` to both `public.css` and the inline style override
+
+### 2.0.6
+- **Search widget styles now apply on frontend** — all search widget CSS rules use `!important` to beat theme CSS that globally targets `input` elements
+
+### 2.0.5
+- **Style overrides now always render** — moved from `wp_head` echo to `wp_add_inline_style()` (appended directly after `public.css`); removed early return when no styles saved so defaults always produce output; `build_style_overrides()` now receives merged `$s` array directly
+
+### 2.0.4
+- Styles tab JS selectors corrected (`#wpgt-panel-styles` throughout); Save bar pinned to panel bottom; Sort Terms tab removed from nav
+
+### 2.0.3 / 2.0.2 / 2.0.1
+- Layout fixes: WP adminbar and sidebar remain fully visible; plugin panels positioned with `left: 160px / 36px` (folded sidebar) rather than hiding WP chrome
+
+### 2.0.0
+- **Full Styles tab** — Elementor-style two-panel visual editor with live preview for all components (Trigger Word, Tooltip Bubble, Glossary Index, Term Box, Search Widget)
+- **Global Font** selector with Google Fonts integration
+- Admin UI rebuilt: fixed topbar navigation, accordion cards, drag-to-resize left panel
+
 ### 1.0.7
-- Fixed syncopation for Sanskrit loanwords — terms like ბჰაკტი no longer generate phantom ბჰკტ- forms
-- Added dative+სთვის postposition form (e.g. ბჰოგასთვის, ბჰაკტსთვის) to form generation for Class 1 and Class 2 nouns
-- Fixed CSS layout: Import/Export and Sort Terms tab panels now correctly render inside the settings container
+- Fixed syncopation for Sanskrit loanwords
+- Added dative+სთვის postposition form
+- Fixed CSS layout for Import/Export and Sort Terms panels
 
 ### 1.0.6
-- Switched import/export to Excel (.xlsx) format — no more comma issues in definitions
-- Removed transparency/blur from tooltip — solid background only
-- Tooltip width is now auto-sizing (`max-content`) with min 200px / max `min(500px, 100vw - 24px)`
-- Mobile: tooltip capped to viewport width with 12px edge margin
-- Replaced regex-based content parsing with tokenisation + hash-map lookup — scales to any glossary size without performance degradation
-- Georgian declension-aware matching: generates 78–131 forms per term at save time
-- Fixed partial word matching using Unicode word boundaries
-- Fixed HTML leaking into rendered content
-- Elementor: switched from `add_action` to `add_filter` for `elementor/frontend/the_content`
+- Switched import/export to Excel (.xlsx)
+- Solid tooltip backgrounds (removed transparency/blur)
+- Replaced regex parsing with tokenisation + hash-map lookup
+- Georgian declension-aware matching (78–131 forms per term)
+- Fixed partial word matching with Unicode word boundaries
 
 ### 1.0.0
 - Initial release

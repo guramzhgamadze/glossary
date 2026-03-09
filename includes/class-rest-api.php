@@ -112,8 +112,12 @@ class WPGT_REST_API {
         // Direct LIKE on post_title is reliable for all scripts including Georgian UTF-8.
         // Pattern per docs: esc_like() first, then pass the full LIKE string as a %s placeholder.
         // See: https://developer.wordpress.org/reference/classes/wpdb/prepare/
-        $like = '%' . $wpdb->esc_like( $q ) . '%';
-        $ids  = $wpdb->get_col( $wpdb->prepare(
+        // Two-pass search: titles that START WITH the query rank first,
+        // followed by titles that CONTAIN the query elsewhere — then merge & dedupe.
+        $like_starts = $wpdb->esc_like( $q ) . '%';      // "იდ%"
+        $like_any    = '%' . $wpdb->esc_like( $q ) . '%'; // "%იდ%"
+
+        $ids_start = $wpdb->get_col( $wpdb->prepare(
             "SELECT ID FROM {$wpdb->posts}
              WHERE post_type = %s
                AND post_status = 'publish'
@@ -121,11 +125,24 @@ class WPGT_REST_API {
              ORDER BY post_title ASC
              LIMIT 10",
             WPGT_Post_Type::POST_TYPE,
-            $like
-        ) );
+            $like_starts
+        ) ) ?: [];
 
-        // $wpdb->get_col() never throws — it returns null/false and stores the
-        // error in $wpdb->last_error. try/catch cannot catch wpdb failures.
+        $ids_any = $wpdb->get_col( $wpdb->prepare(
+            "SELECT ID FROM {$wpdb->posts}
+             WHERE post_type = %s
+               AND post_status = 'publish'
+               AND post_title LIKE %s
+             ORDER BY post_title ASC
+             LIMIT 10",
+            WPGT_Post_Type::POST_TYPE,
+            $like_any
+        ) ) ?: [];
+
+        // Merge: starts-with results first, then any remaining contains results
+        $ids = array_values( array_unique( array_merge( $ids_start, $ids_any ) ) );
+        $ids = array_slice( $ids, 0, 10 );
+
         if ( $wpdb->last_error || ! $ids ) {
             return new WP_REST_Response( [], 200 );
         }

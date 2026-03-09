@@ -980,6 +980,7 @@ class WPGT_Admin {
                     $field('Padding V',   'search_input_padding_v',   $s['search_input_padding_v'],   'number', [], 'px');
                     $field('Padding H',   'search_input_padding_h',   $s['search_input_padding_h'],   'number', [], 'px');
                 $gc();
+                $field('Placeholder Text', 'search_placeholder', $s['search_placeholder'] ?? 'Search glossary…', 'text', [], '', true);
 
                 $group('Icons', '.wpgt-search-icon / .wpgt-search-clear');
                 $go();
@@ -1402,6 +1403,7 @@ class WPGT_Admin {
                     case 'search_noresults_color': break; // no-results state not shown in preview
                     case 'search_result_padding_v':sr.find('div').css({'padding-top':px(val,'8px'),'padding-bottom':px(val,'8px')}); break;
                     case 'search_result_padding_h':sr.find('div').css({'padding-left':px(val,'12px'),'padding-right':px(val,'12px')}); break;
+                    case 'search_placeholder':    $('#wpgt-pv-search-input').attr('placeholder', val||'Search glossary…'); break;
                     case 'search_max_width':       break; // width not constrained in admin card preview
                     case 'search_max_width_unit':  break;
                     case 'search_input_height':    si.css({'min-height':val?val+'px':'','padding-top':val?Math.max(0,Math.round((parseInt(val)-24)/2))+'px':'','padding-bottom':val?Math.max(0,Math.round((parseInt(val)-24)/2))+'px':''}); break;
@@ -1563,16 +1565,26 @@ class WPGT_Admin {
             overflow-y: auto;
         }
 
-        /* ── Color picker — fixed so it escapes overflow:hidden ── */
+        /* ── Color picker — always on top, positioned via JS on open ── */
         #wpgt-panel-styles .wp-picker-container {
             position: relative;
-            z-index: 200;
         }
+        /* The holder drops down below the swatch button by default — keep it in flow
+           but lift its stacking context above everything else on the page */
         #wpgt-panel-styles .wp-picker-container .wp-picker-holder {
-            position: fixed !important;
+            position: absolute !important;
             z-index: 999999 !important;
+            top: 100% !important;
+            left: 0 !important;
         }
-        .iris-picker { z-index: 999999 !important; }
+        /* Iris color wheel inherits z-index from holder; belt-and-suspenders */
+        .iris-picker,
+        #wpgt-panel-styles .iris-picker { z-index: 999999 !important; }
+        /* Lift the entire open container above save-bar (z-index:99) and drag-handle (z-index:10) */
+        #wpgt-panel-styles .wp-picker-container.wp-picker-active {
+            position: relative;
+            z-index: 99999 !important;
+        }
 
         /* ════════════════════════════════════════════════════
            ACCORDION CARDS
@@ -1703,8 +1715,7 @@ class WPGT_Admin {
             letter-spacing: .06em;
         }
         #wpgt-panel-styles .wpgt-field > div,
-        #wpgt-panel-styles .wpgt-field > select,
-        #wpgt-panel-styles .wpgt-field > input { flex: 1; min-width: 0; }
+        #wpgt-panel-styles .wpgt-field > input:not(.wpgt-field-text) { flex: 1; min-width: 0; }
 
         /* ── Color swatch ─────────────────────────────────── */
         #wpgt-panel-styles .wpgt-field-color-wrap {
@@ -1810,16 +1821,31 @@ class WPGT_Admin {
             border: 1px solid var(--el-input-bd) !important;
             border-radius: 4px !important; height: 28px !important;
             font-size: 0.78rem !important; padding: 0 6px !important;
-            box-shadow: none !important; width: 100%;
+            box-shadow: none !important;
+            width: auto;          /* shrink to content */
+            min-width: 80px;
+            max-width: 100%;
         }
         #wpgt-panel-styles .wpgt-field select:focus {
             border-color: var(--el-input-focus) !important;
             box-shadow: 0 0 0 2px rgba(64,84,178,.15) !important; outline: none;
         }
 
-        /* ── Text input ───────────────────────────────────── */
-        #wpgt-panel-styles .wpgt-field-text,
-        #wpgt-panel-styles .wpgt-field input[type=text]:not(.wpgt-style-picker) {
+        /* ── Text input — ALL text fields: auto-width, never stretch ── */
+        #wpgt-panel-styles .wpgt-field-text {
+            background: var(--el-input-bg) !important;
+            color: var(--el-text) !important;
+            border: 1px solid var(--el-border) !important;
+            border-radius: 4px !important;
+            padding: 5px 8px !important;
+            font-size: 0.78rem !important;
+            box-sizing: border-box;
+            width: auto !important;
+            min-width: 160px;
+            max-width: 220px;
+            flex: 0 0 auto !important;
+        }
+        #wpgt-panel-styles .wpgt-field input[type=text]:not(.wpgt-style-picker):not(.wpgt-field-text) {
             background: var(--el-input-bg) !important; color: var(--el-text) !important;
             border: 1px solid var(--el-input-bd) !important; border-radius: 4px !important;
             height: 28px !important; font-size: 0.78rem !important;
@@ -1837,7 +1863,7 @@ class WPGT_Admin {
            SAVE BAR
         ════════════════════════════════════════════════════ */
         #wpgt-panel-styles .wpgt-save-bar {
-            position: sticky; bottom: 0; z-index: 99;
+            position: sticky; bottom: 0; z-index: 9;
             background: #fff; border-top: 1px solid var(--el-border);
             padding: 10px 16px; display: flex; align-items: center; gap: 8px;
         }
@@ -2014,6 +2040,7 @@ class WPGT_Admin {
             'search_noresults_color'   => '#94a3b8',
             'search_result_padding_v'  => '10',
             'search_result_padding_h'  => '14',
+            'search_placeholder'       => 'Search glossary…',
         ];
     }
 
@@ -2085,7 +2112,7 @@ class WPGT_Admin {
             if ( ! isset( $raw[ $key ] ) ) continue;
             $val = $raw[ $key ];
             // Free-text fields (font names, button text, etc.)
-            $text_keys = ['tooltip_read_more_text', 'global_font_custom'];
+            $text_keys = ['tooltip_read_more_text', 'global_font_custom', 'search_placeholder'];
             if ( in_array( $key, $text_keys, true ) ) {
                 $clean[ $key ] = sanitize_text_field( $val );
             } elseif ( $key === 'global_font_family' ) {

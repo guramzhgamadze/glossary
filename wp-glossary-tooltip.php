@@ -34,7 +34,7 @@ if ( version_compare( PHP_VERSION, '7.4', '<' ) ) {
     return; // Stop loading — prevents fatal errors on old PHP
 }
 
-define( 'WPGT_VERSION',     '2.0.4' );
+define( 'WPGT_VERSION',     '2.0.14' );
 define( 'WPGT_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'WPGT_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'WPGT_PLUGIN_FILE', __FILE__ );
@@ -79,7 +79,6 @@ class WP_Glossary_Tooltip {
     private function __construct() {
         add_action( 'init', [ $this, 'init' ] );
         add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_public_assets' ] );
-        add_action( 'wp_head',            [ $this, 'output_style_overrides' ], 99 );
         register_activation_hook( WPGT_PLUGIN_FILE,   [ $this, 'activate' ] );
         register_deactivation_hook( WPGT_PLUGIN_FILE, [ $this, 'deactivate' ] );
     }
@@ -107,6 +106,15 @@ class WP_Glossary_Tooltip {
             [],
             WPGT_VERSION
         );
+
+        // Always attach style overrides — merged with defaults so they always apply
+        // even on first install before user has saved anything.
+        // wp_add_inline_style guarantees this CSS is appended right after public.css,
+        // regardless of page caching or hook priority.
+        $style_css = $this->build_style_overrides( $sm );
+        if ( $style_css ) {
+            wp_add_inline_style( 'wpgt-public', $style_css );
+        }
 
         if ( empty( $settings['enable_tooltips'] ) ) {
             return;
@@ -151,12 +159,7 @@ class WP_Glossary_Tooltip {
         ] );
     }
 
-    public function output_style_overrides() {
-        $saved = get_option( 'wpgt_styles', [] );
-        if ( empty( $saved ) ) return;
-
-        $defaults = WPGT_Admin::get_style_defaults();
-        $s = wp_parse_args( $saved, $defaults );
+    public function build_style_overrides( array $s ): string {
 
         $col = function( string $k ) use ( $s ): string {
             $v = trim( (string)( $s[$k] ?? '' ) );
@@ -399,47 +402,57 @@ class WP_Glossary_Tooltip {
             $css .= '.wpgt-search-input{min-height:' . $sih . 'px;padding-top:' . $pv . 'px;padding-bottom:' . $pv . 'px;}';
         }
 
-        $css .= $rule( '.wpgt-search-input', [
+        // Search widget rules use !important to beat theme/plugin CSS that targets inputs globally
+        $rulei = function( string $sel, array $decls ): string {
+            $body = '';
+            foreach ( $decls as $p => $v ) { if ( $v !== '' ) $body .= $p . ':' . $v . ' !important;'; }
+            return $body !== '' ? $sel . '{' . $body . '}' : '';
+        };
+
+        $css .= $rulei( '.wpgt-search-input', [
             'border-color'  => $col('search_input_border'),
+            'border-style'  => 'solid',   // beat theme dashed/dotted overrides
+            'border-width'  => '1.5px',
+            'outline'       => 'none',    // beat theme outline styles
             'border-radius' => $px('search_input_radius'),
             'font-size'     => $px('search_input_size'),
             'background'    => $col('search_input_bg'),
             'color'         => $col('search_input_text_color'),
             'padding'       => ( $si_pv !== 10 || $si_ph !== 16 ) ? $si_pv.'px 38px '.$si_pv.'px 38px' : '',
         ]);
-        // Focus ring uses chosen colour with 20% opacity for the glow
         $focus = $col('search_input_focus');
-        if ( $focus ) $css .= '.wpgt-search-input:focus{border-color:'.$focus.';box-shadow:0 0 0 3px '.$focus.'33;}';
-        if ( $focus ) $css .= '.wpgt-search-input[aria-expanded="true"]{border-color:'.$focus.';}';
+        if ( $focus ) $css .= '.wpgt-search-input:focus{border-color:'.$focus.' !important;box-shadow:0 0 0 3px '.$focus.'33 !important;}';
+        if ( $focus ) $css .= '.wpgt-search-input[aria-expanded="true"]{border-color:'.$focus.' !important;}';
 
-        // Icon + clear button colours
-        if ( $col('search_icon_color') )  $css .= '.wpgt-search-icon{color:' . $col('search_icon_color') . ';}';
-        if ( $col('search_clear_color') ) $css .= '.wpgt-search-clear{color:' . $col('search_clear_color') . ';}';
+        if ( $col('search_icon_color') )  $css .= '.wpgt-search-icon{color:' . $col('search_icon_color') . ' !important;}';
+        if ( $col('search_clear_color') ) $css .= '.wpgt-search-clear{color:' . $col('search_clear_color') . ' !important;}';
 
-        $css .= $rule( '.wpgt-search-results', [
+        $css .= $rulei( '.wpgt-search-results', [
             'background'    => $col('search_results_bg'),
             'border-radius' => $px('search_results_radius'),
             'box-shadow'    => $srs,
-            'border-color'  => $col('search_input_border'), // match input border
+            'border-color'  => $col('search_input_border'),
         ]);
-        $css .= $rule( '.wpgt-search-result-item:hover,.wpgt-search-result-item.wpgt-active', [
+        $css .= $rulei( '.wpgt-search-result-item:hover,.wpgt-search-result-item.wpgt-active', [
             'background' => $col('search_result_hover_bg'),
             'color'      => $col('search_result_hover_color'),
         ]);
-        $css .= $rule( '.wpgt-search-result-item', [
-            'color'         => $col('search_result_text'),
+        $css .= $rulei( '.wpgt-search-result-item', [
+            'color'               => $col('search_result_text'),
             'border-bottom-color' => $col('search_separator_color'),
-            'padding'       => ( $sr_pv !== 10 || $sr_ph !== 14 ) ? $sr_pv.'px '.$sr_ph.'px' : '',
+            'padding'             => ( $sr_pv !== 10 || $sr_ph !== 14 ) ? $sr_pv.'px '.$sr_ph.'px' : '',
         ]);
-        $css .= $rule( '.wpgt-search-result-title',   ['color' => $col('search_result_title')]   );
-        $css .= $rule( '.wpgt-search-result-excerpt', ['color' => $col('search_result_excerpt')] );
-        if ( $col('search_match_color') )     $css .= '.wpgt-search-match{color:' . $col('search_match_color') . ';}';
-        if ( $col('search_noresults_color') ) $css .= '.wpgt-search-no-results{color:' . $col('search_noresults_color') . ';}';
+        $css .= $rulei( '.wpgt-search-result-title',   ['color' => $col('search_result_title')]   );
+        $css .= $rulei( '.wpgt-search-result-excerpt', ['color' => $col('search_result_excerpt')] );
+        if ( $col('search_match_color') )     $css .= '.wpgt-search-match{color:' . $col('search_match_color') . ' !important;}';
+        if ( $col('search_noresults_color') ) $css .= '.wpgt-search-no-results{color:' . $col('search_noresults_color') . ' !important;}';
+
+        // iOS Safari zooms when font-size < 16px — always enforce 16px on small screens
+        $css .= '@media screen and (max-width:768px){.wpgt-search-input{font-size:16px !important;}}';
 
 
-        if ( $css ) {
-            echo '<style id="wpgt-style-overrides">' . $css . '</style>' . "\n";
-        }
+
+        return $css;
     }
 
     public function activate() {

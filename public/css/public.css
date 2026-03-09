@@ -358,16 +358,16 @@
 
 .wpgt-search-input {
     width: 100%;
-    padding: 10px 38px 10px 52px; /* 14px left + 16px icon + 22px breathing room */
+    padding: 10px 38px 10px 52px;
     box-sizing: border-box;
     font-size: 0.9375rem;
-    border: 1.5px solid #d1d5db;
+    border: 1.5px solid #d1d5db !important;
+    border-style: solid !important;   /* prevent theme from switching to dashed/dotted */
     border-radius: 6px;
     background: #fff;
     color: #1e293b;
+    outline: none !important;         /* prevent theme outline overrides */
     transition: border-color 0.15s, box-shadow 0.15s;
-    box-sizing: border-box;
-    /* Remove browser-default 'x' clear button — we supply our own */
     -webkit-appearance: none;
 }
 .wpgt-search-input::-webkit-search-cancel-button { display: none; }
@@ -488,4 +488,16 @@
     color: #ef4444;
     font-size: 0.875rem;
     text-align: center;
+}
+
+/* ── iOS Safari zoom prevention ─────────────────────────────────────
+   Safari zooms in on any input with font-size < 16px. Force 16px on
+   mobile, then reset to the designed size once the user starts typing
+   (handled by setting font-size back via JS in public.js is complex,
+   so simplest reliable fix: always use 16px on touch devices).
+──────────────────────────────────────────────────────────────────── */
+@media screen and (max-width: 768px) {
+    .wpgt-search-input {
+        font-size: 16px !important;  /* prevents iOS Safari auto-zoom */
+    }
 }

@@ -303,8 +303,14 @@ class WPGT_Shortcodes {
     // [wpgt_search placeholder="Search glossary…"]
     // ------------------------------------------------------------------
     public static function search_widget( $atts ): string {
+        // Use saved placeholder from Styles tab, falling back to shortcode attr, then default
+        $saved_styles      = get_option( 'wpgt_styles', [] );
+        $default_placeholder = ! empty( $saved_styles['search_placeholder'] )
+            ? $saved_styles['search_placeholder']
+            : __( 'Search glossary…', 'wp-glossary-tooltip' );
+
         $atts = shortcode_atts( [
-            'placeholder' => __( 'Search glossary…', 'wp-glossary-tooltip' ),
+            'placeholder' => $default_placeholder,
         ], $atts, 'wpgt_search' );
 
         // Unique IDs per widget instance — required for aria-controls / aria-activedescendant
