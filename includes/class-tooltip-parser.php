@@ -18,10 +18,30 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  *
  * The map is built once per page request in get_all_terms_for_parsing() and
  * cached in the WP object cache. Total cost per page: O(total text characters).
+ *
+ * ELEMENTOR SCOPE GUARD
+ * =====================
+ * We use a whitelist approach: tooltips are injected ONLY while an Elementor
+ * "Post Content" widget is rendering. This prevents injection into headers,
+ * footers, loop-grid cards, related posts, post navigation widgets, etc.
+ *
+ * Official Elementor hooks used:
+ *   elementor/frontend/widget/before_render  (action, passes \Elementor\Widget_Base)
+ *   elementor/frontend/widget/after_render   (action, passes \Elementor\Widget_Base)
+ * Source: https://developers.elementor.com/docs/hooks/render-frontend-elements/
+ *
+ * The $in_post_content_widget flag is set true ONLY for widgets whose get_name()
+ * returns one of POST_CONTENT_WIDGETS. The_content filter bails immediately if
+ * the flag is false — guaranteeing zero injection outside that widget.
  */
 class WPGT_Tooltip_Parser {
 
-    private static bool $initialized = false;
+    private static bool $initialized            = false;
+    private static bool $in_post_content_widget = false;  // true ONLY while a Post Content widget renders
+    private static bool $elementor_is_rendering = false;  // true once Elementor begins rendering ANY widget on the page
+
+    /** Elementor widget names that represent the main post body content. */
+    private const POST_CONTENT_WIDGETS = [ 'theme-post-content', 'post-content' ];
 
     /** Regex that finds a run of Georgian/Latin/digit chars, allowing soft hyphens inside. */
     private const WORD_RE = '/[\x{10D0}-\x{10FF}\x{10A0}-\x{10CF}A-Za-z0-9\x{00AD}][\x{10D0}-\x{10FF}\x{10A0}-\x{10CF}A-Za-z0-9\x{00AD}\-]*/u';
@@ -30,10 +50,49 @@ class WPGT_Tooltip_Parser {
         if ( self::$initialized ) return;
         self::$initialized = true;
         add_filter( 'the_content', [ __CLASS__, 'parse_content' ], 12 );
+
+        // Elementor scope guard — uses official Elementor hooks.
+        // Source: https://developers.elementor.com/docs/hooks/render-frontend-elements/
+        //
+        // elementor/frontend/before_render fires once before Elementor starts rendering
+        // the page — we use it to know the page IS an Elementor page so we can enforce
+        // the whitelist without calling any potentially missing Elementor methods.
+        //
+        // elementor/frontend/widget/before_render & after_render fire per-widget and
+        // let us flag exactly which widget is currently rendering.
+        add_action( 'elementor/frontend/before_render',        [ __CLASS__, 'mark_elementor_rendering'    ] );
+        add_action( 'elementor/frontend/widget/before_render', [ __CLASS__, 'enter_post_content_widget'   ] );
+        add_action( 'elementor/frontend/widget/after_render',  [ __CLASS__, 'leave_post_content_widget'   ] );
+    }
+
+    /** Fired once by Elementor before it renders the page — marks this as an Elementor page. */
+    public static function mark_elementor_rendering(): void {
+        self::$elementor_is_rendering = true;
+    }
+
+    public static function enter_post_content_widget( $widget ): void {
+        if ( $widget && method_exists( $widget, 'get_name' )
+             && in_array( $widget->get_name(), self::POST_CONTENT_WIDGETS, true ) ) {
+            self::$in_post_content_widget = true;
+        }
+    }
+
+    public static function leave_post_content_widget( $widget ): void {
+        if ( $widget && method_exists( $widget, 'get_name' )
+             && in_array( $widget->get_name(), self::POST_CONTENT_WIDGETS, true ) ) {
+            self::$in_post_content_widget = false;
+        }
     }
 
     public static function parse_content( string $content, $widget = null ): string {
         if ( empty( $content ) ) return $content;
+
+        // Scope guard: on Elementor-built pages, only inject inside the Post Content widget.
+        // On classic/block-theme pages ($elementor_is_rendering stays false) → no restriction.
+        // This prevents injection into headers, footers, loop grids, related posts, etc.
+        if ( self::$elementor_is_rendering && ! self::$in_post_content_widget ) {
+            return $content;
+        }
 
         $settings = WPGT_Settings::get_all();
         if ( ! is_singular() ) return $content;
@@ -44,6 +103,46 @@ class WPGT_Tooltip_Parser {
 
         $index = WPGT_Post_Type::get_all_terms_for_parsing();
         if ( empty( $index['map'] ) || empty( $index['terms'] ) ) return $content;
+
+        // ── Category Rules filtering ─────────────────────────────────────
+        // If any rules are configured, filter the term index to only include
+        // terms whose groups overlap with the active groups for this post.
+        // Terms with NO group assigned are always excluded (strict mode).
+        // If NO rules are configured at all → backward compat: show all grouped terms.
+        $cat_rules = WPGT_Settings::get_cat_rules();
+
+        if ( ! empty( $cat_rules ) ) {
+            // Build union of active group slugs from this post's WP categories
+            $post_cat_ids  = wp_get_post_categories( $current_id, [ 'fields' => 'ids' ] );
+            $active_groups = [];
+            foreach ( (array) $post_cat_ids as $cat_id ) {
+                $key = (string) $cat_id;
+                if ( isset( $cat_rules[ $key ] ) ) {
+                    foreach ( $cat_rules[ $key ] as $slug ) {
+                        $active_groups[ $slug ] = true;
+                    }
+                }
+            }
+            // Filter: keep only terms with at least one group in active_groups.
+            // Terms with no groups ([] ) are always excluded in strict mode.
+            $allowed = [];
+            foreach ( $index['terms'] as $tid => $tdata ) {
+                if ( empty( $tdata['groups'] ) ) continue;           // no group → excluded
+                foreach ( $tdata['groups'] as $g ) {
+                    if ( isset( $active_groups[ $g ] ) ) {
+                        $allowed[ $tid ] = true;
+                        break;
+                    }
+                }
+            }
+            // Rebuild filtered index
+            $filtered_terms = array_intersect_key( $index['terms'], $allowed );
+            $filtered_map   = array_filter( $index['map'], fn( $id ) => isset( $allowed[ $id ] ) );
+            $index = [ 'terms' => $filtered_terms, 'map' => $filtered_map ];
+
+            if ( empty( $index['map'] ) ) return $content;
+        }
+        // No rules configured: fall through with full index (backward compat)
 
         return self::inject_tooltips( $content, $index, $settings, $current_id );
     }
@@ -287,5 +386,9 @@ class WPGT_Tooltip_Parser {
 }
 
 add_action( 'wp', [ 'WPGT_Tooltip_Parser', 'init' ] );
-add_filter( 'elementor/widget/render_content', [ 'WPGT_Tooltip_Parser', 'parse_content' ], 12, 2 );
-add_filter( 'elementor/frontend/the_content',  [ 'WPGT_Tooltip_Parser', 'parse_content' ], 12 );
+// NOTE: elementor/widget/render_content is intentionally NOT hooked here.
+// It fires for EVERY widget on the page (headers, footers, loop grids, etc.)
+// which would inject tooltips everywhere. Instead we use the whitelist approach:
+// the_content filter + before/after_render flags to limit injection to the
+// Elementor Post Content widget only.
+// Reference: https://developers.elementor.com/docs/hooks/render-frontend-elements/

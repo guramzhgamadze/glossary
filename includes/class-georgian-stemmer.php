@@ -342,6 +342,249 @@ class WPGT_Georgian_Stemmer {
         return $max;
     }
 
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // LOANWORD DECLENSION ENGINE
+    // Rules: no syncope ever; truncation only for -ა stems in Gen/Ins;
+    //        -ე/-ო/-უ stems never truncate; postpositions per provided spec.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Public entry point — mirrors generate_all_forms() but for loanwords.
+     * Call this instead of generate_all_forms() when _wpgt_is_loanword = 1.
+     */
+    public static function generate_loanword_forms( string $word ): array {
+        $word = str_replace( [ '&shy;', '&#173;', "\xc2\xad" ], '', $word );
+        $word = mb_strtolower( trim( $word ), 'UTF-8' );
+
+        if ( ! self::is_georgian( $word ) || mb_strlen( $word, 'UTF-8' ) < 2 ) {
+            return [ $word ];
+        }
+
+        $last = self::mb_last( $word );
+
+        if ( $last === 'ი' ) {
+            $forms = self::lw_consonant( $word );
+        } elseif ( $last === 'ა' ) {
+            $forms = self::lw_a_stem( $word );
+        } elseif ( $last === 'ე' ) {
+            $forms = self::lw_eou_stem( $word, 'ე' );
+        } elseif ( $last === 'ო' ) {
+            $forms = self::lw_eou_stem( $word, 'ო' );
+        } elseif ( $last === 'უ' ) {
+            $forms = self::lw_eou_stem( $word, 'უ' );
+        } else {
+            // Already ends in consonant — treat as consonant stem directly
+            $forms = self::lw_consonant_stem( $word );
+        }
+
+        $forms = array_filter( $forms, fn( $f ) =>
+            mb_strlen( $f, 'UTF-8' ) >= self::MIN_STEM_LEN
+        );
+
+        return array_values( array_unique( $forms ) );
+    }
+
+    // ── Consonant-ending loanword (nom ends in -ი) ───────────────────────
+    // Core stem = word minus final -ი.  NO syncope ever.
+
+    private static function lw_consonant( string $word ): array {
+        $stem = mb_substr( $word, 0, mb_strlen( $word, 'UTF-8' ) - 1, 'UTF-8' );
+        $f    = [];
+        self::lw_c_cases( $f, $stem, $word );
+        self::lw_plural_consonant( $f, $stem );   // plural stem = stem+ებ
+        return $f;
+    }
+
+    private static function lw_consonant_stem( string $stem ): array {
+        $f = [];
+        self::lw_c_cases( $f, $stem, $stem . 'ი' );
+        self::lw_plural_consonant( $f, $stem );
+        return $f;
+    }
+
+    /**
+     * Seven cases + postpositions for a consonant-stem loanword.
+     *
+     * Cases (from spec §4):
+     *   Nom: stem+ი   Erg: stem+მა  Dat: stem+ს
+     *   Gen: stem+ის  Ins: stem+ით  Adv: stem+ად  Voc: stem+ო
+     *
+     * Postpositions (from spec §5):
+     *   -ში/-ზე  → stem+ში, stem+ზე
+     *   -თვის    → gen+თვის  (stem+ის+თვის)
+     *   -გან     → gen+გან   (stem+ის+გან)
+     *   -თან     → stem+თან  (attach to bare stem, spec §5)
+     *   -ვით     → nom+ვით   (stem+ი+ვით)
+     */
+    private static function lw_c_cases( array &$f, string $s, string $nom ): void {
+        $erg = $s . 'მა';
+        $dat = $s . 'ს';
+        $gen = $s . 'ის';
+        $ins = $s . 'ით';
+        $adv = $s . 'ად';
+        $voc = $s . 'ო';
+        self::am( $f, [ $nom, $erg, $dat, $gen, $ins, $adv, $voc ] );
+
+        // Core postpositions
+        self::am( $f, [
+            $s   . 'ში',            // -ში: bare stem
+            $s   . 'ზე',            // -ზე: bare stem
+            $s   . 'თან',           // -თან: bare stem (spec: consonant stem)
+            $dat . 'თვის',          // -სთვის: dat+თვის (also valid)
+            $gen . 'თვის',          // -ისთვის: gen+თვის
+            $gen . 'გან',           // -ისგან: gen+გან
+            $nom . 'ვით',           // -ვით: nom+ვით
+            $s   . 'იდან',          // -იდან: ins drop -თ
+            $s   . 'ამდე',          // -მდე
+            $dat . 'ახლოს',
+        ] );
+
+        // Full genitive postposition set
+        foreach ( [ 'კენ','გარეშე','გამო','შესახებ','შორის','წინ','შემდეგ','გარდა','მიერ','მიუხედავად','მაგივრად' ] as $p ) {
+            self::a( $f, $gen . $p );
+        }
+
+        // Enclitics -ც / -ვე
+        self::am( $f, [
+            $nom . 'ც', $dat . 'ც', $dat . 'აც', $gen . 'ც',
+            $s   . 'შიც', $s . 'ზეც', $dat . 'თანაც',
+            $nom . 'ვე', $s . 'შივე', $dat . 'ვე', $gen . 'ვე',
+        ] );
+    }
+
+    // ── -ა stem loanword ─────────────────────────────────────────────────
+    // e.g. კამერა, ასანა, კარმა
+    // base = full word; trunc = drop -ა (for Gen/Ins only)
+
+    private static function lw_a_stem( string $word ): array {
+        $base  = $word;
+        $trunc = mb_substr( $word, 0, mb_strlen( $word, 'UTF-8' ) - 1, 'UTF-8' );
+        $f     = [];
+        self::lw_a_cases( $f, $base, $trunc );
+        self::lw_plural_consonant( $f, $trunc );  // plural: trunc+ებ
+        return $f;
+    }
+
+    /**
+     * Seven cases + postpositions for an -ა stem loanword.
+     *
+     * Cases (spec §4):
+     *   Nom: base      Erg: base+მ   Dat: base+ს
+     *   Gen: trunc+ის  Ins: trunc+ით Adv: base+დ  Voc: base
+     *
+     * Postpositions (spec §5):
+     *   -ში/-ზე  → base+ში, base+ზე   (full base, not truncated)
+     *   -თვის    → gen+თვის = trunc+ის+თვის
+     *   -გან     → gen+გან  = trunc+ის+გან
+     *   -თან     → dat+თან  = base+ს+თან   (spec: Vowel → dative+სთან)
+     *   -ვით     → dat+ა+ვით = base+ს+ა+ვით (spec: Vowel → dative+"ა"+ვით)
+     */
+    private static function lw_a_cases( array &$f, string $base, string $trunc ): void {
+        $erg = $base  . 'მ';
+        $dat = $base  . 'ს';
+        $gen = $trunc . 'ის';   // TRUNCATED
+        $ins = $trunc . 'ით';   // TRUNCATED
+        $adv = $base  . 'დ';
+        $voc = $base;
+        self::am( $f, [ $base, $erg, $dat, $gen, $ins, $adv, $voc ] );
+
+        self::am( $f, [
+            $base  . 'ში',              // -ში: base+ში
+            $base  . 'ზე',              // -ზე: base+ზე
+            $dat   . 'თვის',            // -სთვის: dative+თვის (base+ს+თვის)
+            $gen   . 'თვის',            // -ისთვის: gen+თვის (trunc+ის+თვის)
+            $gen   . 'გან',             // -ისგან:  gen+გან  (trunc+ის+გან)
+            $dat   . 'თან',             // -თან: dative+თან (base+ს+თან)
+            $dat   . 'ახლოს',
+            $dat   . 'ა' . 'ვით',      // -ვით: dative+ა+ვით (base+ს+ა+ვით)
+            $trunc . 'იდან',            // -იდან: trunc+იდან
+            $base  . 'მდე',             // -მდე
+        ] );
+
+        foreach ( [ 'კენ','გარეშე','გამო','შესახებ','შორის','წინ','შემდეგ','გარდა','მიერ','მიუხედავად','მაგივრად' ] as $p ) {
+            self::a( $f, $gen . $p );
+        }
+
+        self::am( $f, [
+            $base  . 'ც', $dat . 'ც', $dat . 'აც', $gen . 'ც',
+            $base  . 'შიც', $base . 'ზეც', $dat . 'თანაც',
+            $base  . 'ვე', $base . 'შივე', $dat . 'ვე', $gen . 'ვე',
+        ] );
+    }
+
+    // ── -ე / -ო / -უ stem loanword ───────────────────────────────────────
+    // e.g. კაფე, რადიო, მენიუ  — NO truncation anywhere
+    // Gen = base+სი  Ins = base+თი  (not truncated)
+
+    private static function lw_eou_stem( string $word, string $ending ): array {
+        $base = $word;
+        $f    = [];
+        self::lw_eou_cases( $f, $base );
+        self::lw_plural_consonant( $f, $base );   // plural: base+ებ (e.g. რადიოები)
+        return $f;
+    }
+
+    /**
+     * Seven cases + postpositions for -ე/-ო/-უ stem loanwords.
+     *
+     * Cases (spec §4 — no truncation):
+     *   Nom: base   Erg: base+მ  Dat: base+ს
+     *   Gen: base+სი            (NOTE: -სი not -ის, no truncation)
+     *   Ins: base+თი            (NOTE: -თი not -ით, no truncation)
+     *   Adv: base+დ   Voc: base
+     *
+     * Postpositions (spec §5):
+     *   -ში/-ზე  → base+ში, base+ზე
+     *   -თვის    → base+ს+თვის  (drop final ი from Gen base+სი → base+ს, then +თვის)
+     *   -გან     → base+ს+გან   (same: drop ი from სი)
+     *   -თან     → base+ს+თან   (dative+თან)
+     *   -ვით     → base+ს+ა+ვით (dative+ა+ვით)
+     */
+    private static function lw_eou_cases( array &$f, string $base ): void {
+        $erg    = $base . 'მ';
+        $dat    = $base . 'ს';
+        $gen    = $base . 'სი';     // -სი (not -ის)
+        $gen_pp = $base . 'ს';      // for postpositions: drop final ი from სი
+        $ins    = $base . 'თი';     // -თი (not -ით)
+        $adv    = $base . 'დ';
+        $voc    = $base;
+        self::am( $f, [ $base, $erg, $dat, $gen, $ins, $adv, $voc ] );
+
+        self::am( $f, [
+            $base   . 'ში',             // -ში
+            $base   . 'ზე',             // -ზე
+            $dat    . 'თვის',           // -სთვის: dat+თვის (= gen_pp+თვის)
+            $dat    . 'გან',            // -სგან:  dat+გან
+            $dat    . 'თან',            // -თან:   dative+თან
+            $dat    . 'ახლოს',
+            $dat    . 'ა' . 'ვით',     // -ვით:   dative+ა+ვით (base+ს+ა+ვით)
+            $base   . 'დან',            // -დან:   base+დან
+            $base   . 'მდე',            // -მდე
+        ] );
+
+        foreach ( [ 'კენ','გარეშე','გამო','შესახებ','შორის','წინ','შემდეგ','გარდა','მიერ','მიუხედავად','მაგივრად' ] as $p ) {
+            self::a( $f, $gen_pp . $p );  // attach to gen_pp (without final ი)
+        }
+
+        self::am( $f, [
+            $base  . 'ც', $dat . 'ც', $dat . 'აც', $gen . 'ც',
+            $base  . 'შიც', $base . 'ზეც', $dat . 'თანაც',
+            $base  . 'ვე', $base . 'შივე', $dat . 'ვე', $gen . 'ვე',
+        ] );
+    }
+
+    // ── Loanword plural (shared) ─────────────────────────────────────────
+    // Plural stem = passed_stem + ებ, then declined as consonant-final.
+    // NO syncope on the plural stem.
+
+    private static function lw_plural_consonant( array &$f, string $stem ): void {
+        $pl  = $stem . 'ებ';
+        $nom = $pl   . 'ი';
+        // Use the same lw_c_cases — the plural base is already a consonant stem
+        self::lw_c_cases( $f, $pl, $nom );
+    }
+
     // ─── LEGACY API ──────────────────────────────────────────────────────────
 
     public static function stem( string $word ): string {

@@ -5,6 +5,7 @@ class WPGT_Post_Type {
 
     const POST_TYPE  = 'wpgt_term';
     const LETTER_TAX = 'wpgt_letter';
+    const GROUP_TAX  = 'wpgt_group';
 
     /**
      * Georgian letter → ASCII slug.
@@ -50,7 +51,7 @@ class WPGT_Post_Type {
             'query_var'          => true,
             'rewrite'            => [ 'slug' => 'glossary' ],
             'capability_type'    => 'post',
-            'has_archive'        => 'glossary',  // /glossary/ = main archive
+            'has_archive'        => 'glossary',
             'hierarchical'       => false,
             'menu_position'      => 25,
             'menu_icon'          => 'dashicons-book-alt',
@@ -90,9 +91,43 @@ class WPGT_Post_Type {
             ],
         ] );
 
+        // ── Glossary Group Taxonomy ───────────────────────────────────────
+        // Flat tag-style taxonomy for grouping terms into logical glossaries.
+        // Post categories are then mapped to groups in Settings → Category Rules.
+        register_taxonomy( self::GROUP_TAX, self::POST_TYPE, [
+            'labels' => [
+                'name'              => __( 'Glossary Groups',         'wp-glossary-tooltip' ),
+                'singular_name'     => __( 'Glossary Group',          'wp-glossary-tooltip' ),
+                'all_items'         => __( 'All Groups',              'wp-glossary-tooltip' ),
+                'edit_item'         => __( 'Edit Group',              'wp-glossary-tooltip' ),
+                'update_item'       => __( 'Update Group',            'wp-glossary-tooltip' ),
+                'add_new_item'      => __( 'Add New Group',           'wp-glossary-tooltip' ),
+                'new_item_name'     => __( 'New Group Name',          'wp-glossary-tooltip' ),
+                'search_items'      => __( 'Search Groups',           'wp-glossary-tooltip' ),
+                'not_found'         => __( 'No groups found.',        'wp-glossary-tooltip' ),
+                'menu_name'         => __( 'Glossary Groups',         'wp-glossary-tooltip' ),
+            ],
+            'public'             => false,   // no frontend URLs for groups
+            'publicly_queryable' => false,
+            'hierarchical'       => false,   // flat — like tags, not categories
+            'show_ui'            => true,    // shows checkbox panel on term edit screen
+            'show_in_rest'       => true,
+            'show_admin_column'  => true,    // shows group column in term list table
+            'show_in_nav_menus'  => false,
+            'show_tagcloud'      => false,
+            'query_var'          => false,
+            'rewrite'            => false,
+        ] );
+
         // ── Meta fields ───────────────────────────────────────────────────
         $meta_auth = static fn() => current_user_can( 'edit_posts' );
 
+        register_post_meta( self::POST_TYPE, '_wpgt_is_loanword', [
+            'type'          => 'boolean',
+            'single'        => true,
+            'show_in_rest'  => true,
+            'auth_callback' => $meta_auth,  // prevents unauthenticated REST updates
+        ] );
         register_post_meta( self::POST_TYPE, '_wpgt_synonyms', [
             'type' => 'string', 'single' => true,
             'show_in_rest' => true, 'auth_callback' => $meta_auth,
@@ -104,6 +139,18 @@ class WPGT_Post_Type {
         register_post_meta( self::POST_TYPE, '_wpgt_related_terms', [
             'type' => 'string', 'single' => true,
             'show_in_rest' => true, 'auth_callback' => $meta_auth,
+        ] );
+        // _wpgt_declined_forms: JSON array of morphological forms, admin-only view
+        register_post_meta( self::POST_TYPE, '_wpgt_declined_forms', [
+            'type' => 'string', 'single' => true,
+            'show_in_rest' => false,  // internal use only
+        ] );
+        // _wpgt_skip_tooltips: per-post opt-out flag (set via the sidebar meta box on any post type)
+        register_post_meta( '', '_wpgt_skip_tooltips', [
+            'type'          => 'boolean',
+            'single'        => true,
+            'show_in_rest'  => false,  // admin-only
+            'auth_callback' => $meta_auth,
         ] );
     }
 
@@ -201,11 +248,15 @@ class WPGT_Post_Type {
             }
         }
 
+        $is_loanword = (bool) get_post_meta( $post_id, '_wpgt_is_loanword', true );
+
         // Generate full morphological paradigm for every word
         $all_forms = [];
         foreach ( $manual_words as $word ) {
             if ( WPGT_Georgian_Stemmer::is_georgian( $word ) ) {
-                $forms = WPGT_Georgian_Stemmer::generate_all_forms( $word );
+                $forms = $is_loanword
+                    ? WPGT_Georgian_Stemmer::generate_loanword_forms( $word )
+                    : WPGT_Georgian_Stemmer::generate_all_forms( $word );
             } else {
                 $forms = [ mb_strtolower( trim( $word ), 'UTF-8' ) ];
             }
@@ -299,11 +350,16 @@ class WPGT_Post_Type {
             $min = WPGT_Georgian_Stemmer::MIN_STEM_LEN;
             $post_id = $post->ID;
 
+            // Fetch group slugs for this term (used by category-rules filtering)
+            $group_terms = wp_get_post_terms( $post_id, self::GROUP_TAX, [ 'fields' => 'slugs' ] );
+            $group_slugs = ( ! is_wp_error( $group_terms ) && is_array( $group_terms ) ) ? $group_terms : [];
+
             $terms_data[ $post_id ] = [
                 'id'      => $post_id,
                 'title'   => $post->post_title,
                 'tooltip' => $tooltip,
                 'url'     => get_permalink( $post_id ),
+                'groups'  => $group_slugs,   // [] = no group (strict mode: never shown unless globally unlocked)
             ];
 
             foreach ( $all_forms as $form ) {

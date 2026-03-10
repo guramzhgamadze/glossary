@@ -263,6 +263,8 @@ class WPGT_Shortcodes {
     public static function single_term( $atts ): string {
         $atts = shortcode_atts( [ 'id' => 0, 'slug' => '' ], $atts, 'wpgt_term' );
 
+        $post = null;  // always initialise — avoids "undefined variable" notice when neither id nor slug is given
+
         if ( (int) $atts['id'] ) {
             $post = get_post( (int) $atts['id'] );
         } elseif ( $atts['slug'] ) {

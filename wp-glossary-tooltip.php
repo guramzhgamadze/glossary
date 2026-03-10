@@ -34,7 +34,7 @@ if ( version_compare( PHP_VERSION, '7.4', '<' ) ) {
     return; // Stop loading — prevents fatal errors on old PHP
 }
 
-define( 'WPGT_VERSION',     '2.0.14' );
+define( 'WPGT_VERSION',     '2.0.19' );
 define( 'WPGT_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'WPGT_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'WPGT_PLUGIN_FILE', __FILE__ );
@@ -191,13 +191,15 @@ class WP_Glossary_Tooltip {
         $font = trim( $s['global_font_family'] ?? '' );
         if ( ! $font ) $font = trim( $s['global_font_custom'] ?? '' );
         if ( $font ) {
-            // Load the font from Google Fonts
+            // Load the font from Google Fonts using wp_enqueue_style — never echo during wp_enqueue_scripts.
+            // Echo at this point fires BEFORE wp_head and corrupts the page output.
             $gfont_url = 'https://fonts.googleapis.com/css2?family='
                 . urlencode( $font )
                 . ':ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap';
-            echo '<link rel="preconnect" href="https://fonts.googleapis.com">' . "\n";
-            echo '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' . "\n";
-            echo '<link rel="stylesheet" href="' . esc_url( $gfont_url ) . '">' . "\n";
+            // Preconnect hints via wp_enqueue_style dependency-less handles
+            wp_enqueue_style( 'wpgt-gfont-preconnect',      'https://fonts.googleapis.com',  [], null );
+            wp_enqueue_style( 'wpgt-gfont-preconnect-cross', 'https://fonts.gstatic.com',    [], null );
+            wp_enqueue_style( 'wpgt-gfont', $gfont_url, [ 'wpgt-public' ], null );
             // Apply to all plugin elements
             $font_decl = 'font-family:"' . esc_attr( $font ) . '",sans-serif;';
             $css .= '.wpgt-tooltip-bubble,.wpgt-tooltip-trigger,.wpgt-glossary-index,.wpgt-alphabet-bar,.wpgt-term-item,.wpgt-term-box,.wpgt-search-widget,.wpgt-search-input,.wpgt-search-results{' . $font_decl . '}';

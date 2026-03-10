@@ -16,6 +16,7 @@ class WPGT_Admin {
         add_action( 'admin_post_wpgt_sync_letters',     [ __CLASS__, 'sync_letter_taxonomy'  ] );
         add_action( 'admin_post_wpgt_regen_forms',       [ __CLASS__, 'regen_declined_forms'  ] );
         add_action( 'admin_post_wpgt_save_styles',       [ __CLASS__, 'save_styles'           ] );
+        add_action( 'admin_post_wpgt_save_cat_rules',    [ __CLASS__, 'save_cat_rules'        ] );
         add_action( 'save_post',                         [ __CLASS__, 'save_skip_meta'         ] );
         add_action( 'wp_ajax_wpgt_save_order',        [ __CLASS__, 'ajax_save_order'       ] );
 
@@ -181,6 +182,65 @@ class WPGT_Admin {
                 </tr>
                 <tr>
                     <th scope="row">
+                        <label for="wpgt_is_loanword">
+                            <?php esc_html_e( 'Loanword', 'wp-glossary-tooltip' ); ?>
+                        </label>
+                    </th>
+                    <td>
+                        <?php $is_loanword = (bool) get_post_meta( $post->ID, '_wpgt_is_loanword', true ); ?>
+                        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+                            <input type="checkbox" id="wpgt_is_loanword" name="wpgt_is_loanword"
+                                   value="1" <?php checked( $is_loanword ); ?> />
+                            <?php esc_html_e( 'This is a loanword (შემოსული სიტყვა)', 'wp-glossary-tooltip' ); ?>
+                        </label>
+                        <p class="description">
+                            <?php esc_html_e( 'When checked, a special loanword declension engine is used: no syncope, and truncation only for -ა stems in Genitive/Instrumental.', 'wp-glossary-tooltip' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <?php esc_html_e( 'Glossary Group', 'wp-glossary-tooltip' ); ?>
+                    </th>
+                    <td>
+                        <?php
+                        $all_groups    = get_terms( [ 'taxonomy' => WPGT_Post_Type::GROUP_TAX, 'hide_empty' => false ] );
+                        $active_groups = wp_get_post_terms( $post->ID, WPGT_Post_Type::GROUP_TAX, [ 'fields' => 'ids' ] );
+                        $active_groups = is_wp_error( $active_groups ) ? [] : array_map( 'intval', $active_groups );
+                        if ( is_wp_error( $all_groups ) || empty( $all_groups ) ) : ?>
+                            <p style="margin:0;font-size:0.85rem;color:#999;">
+                                <?php esc_html_e( 'No groups exist yet.', 'wp-glossary-tooltip' ); ?>
+                                <a href="<?php echo esc_url( admin_url( 'edit-tags.php?taxonomy=' . WPGT_Post_Type::GROUP_TAX . '&post_type=' . WPGT_Post_Type::POST_TYPE ) ); ?>"
+                                   style="margin-left:6px;">
+                                    + <?php esc_html_e( 'Create groups', 'wp-glossary-tooltip' ); ?>
+                                </a>
+                            </p>
+                        <?php else : ?>
+                            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                            <?php foreach ( $all_groups as $group ) : $checked = in_array( $group->term_id, $active_groups, true ); ?>
+                                <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:4px 10px;border:1px solid <?php echo $checked ? '#2563eb' : '#d1d5db'; ?>;border-radius:9999px;background:<?php echo $checked ? 'rgba(37,99,235,.08)' : '#fff'; ?>;font-size:0.8rem;">
+                                    <input type="checkbox"
+                                           name="wpgt_groups[]"
+                                           value="<?php echo (int) $group->term_id; ?>"
+                                           <?php checked( $checked ); ?>
+                                           style="accent-color:#2563eb;width:13px;height:13px;" />
+                                    <?php echo esc_html( $group->name ); ?>
+                                    <span style="color:#94a3b8;font-size:0.72rem;">(<?php echo (int) $group->count; ?>)</span>
+                                </label>
+                            <?php endforeach; ?>
+                            </div>
+                            <p class="description" style="margin-top:6px;">
+                                <?php esc_html_e( 'Assign this term to one or more Glossary Groups. Only grouped terms are shown in posts — ungrouped terms are never injected (strict mode).', 'wp-glossary-tooltip' ); ?>
+                                <a href="<?php echo esc_url( admin_url( 'edit-tags.php?taxonomy=' . WPGT_Post_Type::GROUP_TAX . '&post_type=' . WPGT_Post_Type::POST_TYPE ) ); ?>"
+                                   style="margin-left:4px;font-size:0.78rem;">
+                                    <?php esc_html_e( 'Manage Groups →', 'wp-glossary-tooltip' ); ?>
+                                </a>
+                            </p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
                         <?php esc_html_e( 'Declined Forms', 'wp-glossary-tooltip' ); ?>
                     </th>
                     <td>
@@ -233,6 +293,16 @@ class WPGT_Admin {
                 update_post_meta( $post_id, $meta_key, sanitize_textarea_field( wp_unslash( $_POST[ $post_key ] ) ) );
             }
         }
+
+        // Checkbox — present in POST only when checked; absent = unchecked
+        $is_loanword = isset( $_POST['wpgt_is_loanword'] ) ? 1 : 0;
+        update_post_meta( $post_id, '_wpgt_is_loanword', $is_loanword );
+
+        // Glossary Group taxonomy — save selected group IDs
+        $raw_groups = isset( $_POST['wpgt_groups'] ) ? array_map( 'absint', (array) $_POST['wpgt_groups'] ) : [];
+        $raw_groups = array_filter( $raw_groups );  // remove 0s
+        wp_set_object_terms( $post_id, $raw_groups, WPGT_Post_Type::GROUP_TAX );
+        wp_cache_delete( 'wpgt_all_terms', 'wpgt' );
     }
 
     // ------------------------------------------------------------------
@@ -243,6 +313,7 @@ class WPGT_Admin {
         return array_merge( $columns, [
             'wpgt_tooltip'  => __( 'Tooltip Preview',  'wp-glossary-tooltip' ),
             'wpgt_synonyms' => __( 'Synonyms',         'wp-glossary-tooltip' ),
+            'wpgt_groups'   => __( 'Groups',           'wp-glossary-tooltip' ),
             'date'          => __( 'Date',              'wp-glossary-tooltip' ),
         ] );
     }
@@ -259,6 +330,16 @@ class WPGT_Admin {
         if ( $column === 'wpgt_synonyms' ) {
             $synonyms = get_post_meta( $post_id, '_wpgt_synonyms', true );
             echo $synonyms ? '<code>' . esc_html( $synonyms ) . '</code>' : '—';
+        }
+        if ( $column === 'wpgt_groups' ) {
+            $groups = wp_get_post_terms( $post_id, WPGT_Post_Type::GROUP_TAX, [ 'fields' => 'names' ] );
+            if ( is_wp_error( $groups ) || empty( $groups ) ) {
+                echo '<span style="color:#f59e0b;font-size:0.75rem;" title="' . esc_attr__( 'No group — never shown in strict mode', 'wp-glossary-tooltip' ) . '">⚠ ' . esc_html__( 'none', 'wp-glossary-tooltip' ) . '</span>';
+            } else {
+                foreach ( $groups as $gn ) {
+                    echo '<span style="display:inline-block;background:rgba(37,99,235,.1);color:#2563eb;border-radius:9999px;padding:1px 8px;font-size:0.72rem;font-weight:600;margin:1px;">' . esc_html( $gn ) . '</span>';
+                }
+            }
         }
     }
 
@@ -283,6 +364,7 @@ class WPGT_Admin {
                 <a href="#" class="wpgt-tab-link" data-panel="wpgt-panel-index">📋 <?php esc_html_e('Index Page','wp-glossary-tooltip'); ?></a>
                 <a href="#" class="wpgt-tab-link" data-panel="wpgt-panel-advanced">🔧 <?php esc_html_e('Advanced','wp-glossary-tooltip'); ?></a>
                 <a href="#" class="wpgt-tab-link" data-panel="wpgt-panel-import">📦 <?php esc_html_e('Import / Export','wp-glossary-tooltip'); ?></a>
+                <a href="#" class="wpgt-tab-link" data-panel="wpgt-panel-catrules">🗂 <?php esc_html_e('Category Rules','wp-glossary-tooltip'); ?></a>
                 <a href="#" class="wpgt-tab-link" data-panel="wpgt-panel-styles">🎨 <?php esc_html_e('Styles','wp-glossary-tooltip'); ?></a>
             </nav>
             <?php if ( $saved ) : ?>
@@ -496,7 +578,10 @@ class WPGT_Admin {
                     <h3><?php esc_html_e('Import Glossary','wp-glossary-tooltip'); ?></h3>
                     <p style="font-size:0.82rem;color:#555;margin:0 0 8px;"><?php esc_html_e('Upload an Excel (.xlsx) file to bulk-create or update glossary terms.','wp-glossary-tooltip'); ?></p>
                     <p style="font-size:0.82rem;color:#555;margin:0 0 14px;">
-                        <?php esc_html_e('Two columns only:','wp-glossary-tooltip'); ?> <code>word</code> <?php esc_html_e('and','wp-glossary-tooltip'); ?> <code>explanation</code>
+                        <?php esc_html_e('Supported columns:','wp-glossary-tooltip'); ?>
+                        <code>word</code>, <code>explanation</code>,
+                        <code>is_loanword</code> (yes/no),
+                        <code>group</code> <?php esc_html_e('(comma-separated group slugs)','wp-glossary-tooltip'); ?>
                     </p>
                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
                         <?php wp_nonce_field('wpgt_import','wpgt_import_nonce'); ?>
@@ -549,6 +634,149 @@ class WPGT_Admin {
                 </div>
 
             </div><!-- /.wpgt-panel-body -->
+        </div>
+
+        <!-- CATEGORY RULES ─────────────────────────────────────── -->
+        <div id="wpgt-panel-catrules" class="wpgt-tab-panel">
+            <?php
+            $all_groups   = get_terms( [ 'taxonomy' => WPGT_Post_Type::GROUP_TAX, 'hide_empty' => false ] );
+            $all_cats     = get_categories( [ 'hide_empty' => false, 'orderby' => 'name', 'order' => 'ASC' ] );
+            $cat_rules    = WPGT_Settings::get_cat_rules();
+            $rules_saved  = ! empty( $_GET['wpgt_rules_saved'] );
+            ?>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+            <?php wp_nonce_field( 'wpgt_save_cat_rules', 'wpgt_cat_rules_nonce' ); ?>
+            <input type="hidden" name="action" value="wpgt_save_cat_rules">
+
+            <div class="wpgt-panel-body">
+
+                <?php if ( $rules_saved ) : ?>
+                <div class="wpgt-notice wpgt-notice-success" style="margin:0 0 16px;">✓ <?php esc_html_e( 'Category rules saved.', 'wp-glossary-tooltip' ); ?></div>
+                <?php endif; ?>
+
+                <?php if ( is_wp_error( $all_groups ) || empty( $all_groups ) ) : ?>
+                <div class="wpgt-panel-card">
+                    <h3><?php esc_html_e( 'No Glossary Groups Yet', 'wp-glossary-tooltip' ); ?></h3>
+                    <p style="font-size:0.85rem;color:#555;margin:0 0 14px;">
+                        <?php esc_html_e( 'You need to create at least one Glossary Group before you can set up category rules.', 'wp-glossary-tooltip' ); ?>
+                    </p>
+                    <a href="<?php echo esc_url( admin_url( 'edit-tags.php?taxonomy=' . WPGT_Post_Type::GROUP_TAX . '&post_type=' . WPGT_Post_Type::POST_TYPE ) ); ?>"
+                       class="button button-primary">
+                        + <?php esc_html_e( 'Create Glossary Groups', 'wp-glossary-tooltip' ); ?>
+                    </a>
+                </div>
+                <?php else : ?>
+
+                <div class="wpgt-panel-card">
+                    <h3><?php esc_html_e( 'How This Works', 'wp-glossary-tooltip' ); ?></h3>
+                    <p style="font-size:0.82rem;color:#555;line-height:1.6;margin:0;">
+                        <?php esc_html_e( 'Assign Glossary Groups to each post category. Only terms belonging to the active groups will show tooltips in posts of that category.', 'wp-glossary-tooltip' ); ?>
+                        <strong><?php esc_html_e( 'Terms with no group assigned are never shown (strict mode).', 'wp-glossary-tooltip' ); ?></strong>
+                        <?php esc_html_e( 'If a post belongs to multiple categories, groups are merged (union).', 'wp-glossary-tooltip' ); ?>
+                        <?php esc_html_e( 'If no rules are configured, all grouped terms are shown everywhere.', 'wp-glossary-tooltip' ); ?>
+                    </p>
+                </div>
+
+                <?php
+                // Manage Groups link
+                $manage_groups_url = admin_url( 'edit-tags.php?taxonomy=' . WPGT_Post_Type::GROUP_TAX . '&post_type=' . WPGT_Post_Type::POST_TYPE );
+                ?>
+                <div class="wpgt-panel-card">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                        <h3 style="margin:0;"><?php esc_html_e( 'Category → Group Mapping', 'wp-glossary-tooltip' ); ?></h3>
+                        <a href="<?php echo esc_url( $manage_groups_url ); ?>" class="button button-secondary" style="font-size:0.78rem;">
+                            + <?php esc_html_e( 'Manage Groups', 'wp-glossary-tooltip' ); ?>
+                        </a>
+                    </div>
+
+                    <?php if ( empty( $all_cats ) ) : ?>
+                    <p style="color:#999;font-size:0.85rem;"><?php esc_html_e( 'No post categories found.', 'wp-glossary-tooltip' ); ?></p>
+                    <?php else : ?>
+                    <table class="wpgt-cat-rules-table" style="width:100%;border-collapse:collapse;">
+                        <thead>
+                            <tr style="border-bottom:2px solid var(--el-border,#e2e8f0);">
+                                <th style="text-align:left;padding:8px 12px;font-size:0.78rem;text-transform:uppercase;letter-spacing:.05em;color:#64748b;width:220px;">
+                                    <?php esc_html_e( 'Post Category', 'wp-glossary-tooltip' ); ?>
+                                </th>
+                                <?php foreach ( $all_groups as $group ) : ?>
+                                <th style="text-align:center;padding:8px 10px;font-size:0.78rem;text-transform:uppercase;letter-spacing:.05em;color:#64748b;min-width:90px;">
+                                    <?php echo esc_html( $group->name ); ?>
+                                    <span style="display:block;font-weight:400;color:#94a3b8;font-size:0.7rem;letter-spacing:0;">(<?php echo (int)$group->count; ?>)</span>
+                                </th>
+                                <?php endforeach; ?>
+                                <th style="width:48px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ( $all_cats as $cat ) :
+                            $cat_id_str  = (string) $cat->term_id;
+                            $active_slugs = $cat_rules[ $cat_id_str ] ?? [];
+                            $has_any      = ! empty( $active_slugs );
+                            $row_style    = $has_any ? 'background:rgba(37,99,235,.04);' : '';
+                        ?>
+                            <tr style="border-bottom:1px solid var(--el-border,#e2e8f0);<?php echo $row_style; ?>">
+                                <td style="padding:10px 12px;font-size:0.85rem;font-weight:<?php echo $has_any ? '600' : '400'; ?>;">
+                                    <?php echo esc_html( $cat->name ); ?>
+                                    <?php if ( $cat->count ) : ?>
+                                    <span style="color:#94a3b8;font-size:0.75rem;font-weight:400;"> (<?php echo (int)$cat->count; ?>)</span>
+                                    <?php endif; ?>
+                                </td>
+                                <?php foreach ( $all_groups as $group ) :
+                                    $checked = in_array( $group->slug, $active_slugs, true );
+                                ?>
+                                <td style="text-align:center;padding:10px;">
+                                    <label style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:4px;<?php echo $checked ? 'background:rgba(37,99,235,.12);' : ''; ?>">
+                                        <input type="checkbox"
+                                               name="wpgt_cat_rules[<?php echo (int)$cat->term_id; ?>][]"
+                                               value="<?php echo esc_attr( $group->slug ); ?>"
+                                               <?php checked( $checked ); ?>
+                                               style="width:15px;height:15px;accent-color:#2563eb;cursor:pointer;" />
+                                    </label>
+                                </td>
+                                <?php endforeach; ?>
+                                <td style="padding:10px 8px;text-align:right;">
+                                    <?php if ( $has_any ) : ?>
+                                    <span style="font-size:0.65rem;color:#2563eb;background:rgba(37,99,235,.1);border-radius:9999px;padding:2px 7px;font-weight:600;white-space:nowrap;">
+                                        <?php echo count( $active_slugs ); ?> <?php esc_html_e( 'active', 'wp-glossary-tooltip' ); ?>
+                                    </span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    <?php endif; ?>
+                </div>
+
+                <?php endif; // end if groups exist ?>
+
+            </div><!-- /.wpgt-panel-body -->
+
+            <?php if ( ! is_wp_error( $all_groups ) && ! empty( $all_groups ) ) : ?>
+            <div class="wpgt-panel-savebar">
+                <button type="submit" class="button button-primary">
+                    💾 <?php esc_html_e( 'Save Category Rules', 'wp-glossary-tooltip' ); ?>
+                </button>
+                <a href="<?php echo esc_url( admin_url( 'admin-post.php?action=wpgt_save_cat_rules&wpgt_clear=1&_wpnonce=' . wp_create_nonce( 'wpgt_save_cat_rules' ) . '&wpgt_cat_rules_nonce=' . wp_create_nonce( 'wpgt_save_cat_rules' ) ) ); ?>"
+                   class="button button-secondary"
+                   onclick="return confirm('<?php esc_attr_e( 'Clear all category rules?', 'wp-glossary-tooltip' ); ?>');">
+                    🗑 <?php esc_html_e( 'Clear All Rules', 'wp-glossary-tooltip' ); ?>
+                </a>
+                <span style="font-size:0.78rem;color:#94a3b8;margin-left:12px;">
+                    <?php
+                    $total_rules = count( $cat_rules );
+                    if ( $total_rules > 0 ) {
+                        printf( esc_html__( '%d categor%s configured', 'wp-glossary-tooltip' ),
+                            $total_rules, $total_rules === 1 ? 'y' : 'ies' );
+                    } else {
+                        esc_html_e( 'No rules configured — backward-compat mode (all grouped terms shown)', 'wp-glossary-tooltip' );
+                    }
+                    ?>
+                </span>
+            </div>
+            <?php endif; ?>
+
+            </form>
         </div>
 
         <!-- STYLES ──────────────────────────────────────────────── -->
@@ -2182,6 +2410,43 @@ class WPGT_Admin {
     // ------------------------------------------------------------------
     // Export: stream a CSV of all glossary terms
     // ------------------------------------------------------------------
+    public static function save_cat_rules() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
+        check_admin_referer( 'wpgt_save_cat_rules', 'wpgt_cat_rules_nonce' );
+
+        $redirect = add_query_arg( [
+            'page'             => 'wpgt-settings',
+            'wpgt_rules_saved' => '1',
+        ], admin_url( 'edit.php?post_type=' . WPGT_Post_Type::POST_TYPE ) ) . '#wpgt-panel-catrules';
+
+        // Clear all rules
+        if ( ! empty( $_GET['wpgt_clear'] ) ) {
+            update_option( WPGT_Settings::RULES_KEY, [] );
+            wp_redirect( $redirect );
+            exit;
+        }
+
+        $raw   = $_POST['wpgt_cat_rules'] ?? [];
+        $rules = [];
+
+        foreach ( (array) $raw as $cat_id => $slugs ) {
+            $cat_id = (int) $cat_id;
+            if ( $cat_id < 1 ) continue;
+            $clean_slugs = array_values( array_filter( array_map( 'sanitize_key', (array) $slugs ) ) );
+            if ( ! empty( $clean_slugs ) ) {
+                $rules[ (string) $cat_id ] = $clean_slugs;
+            }
+        }
+
+        WPGT_Settings::update_cat_rules( $rules );
+
+        // Bust term cache so filtering is recalculated on next page load
+        wp_cache_delete( 'wpgt_all_terms', 'wpgt' );
+
+        wp_redirect( $redirect );
+        exit;
+    }
+
     public static function export_csv() {
         if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Unauthorized' );
         check_admin_referer( 'wpgt_export' );
@@ -2196,11 +2461,14 @@ class WPGT_Admin {
 
         // Build xlsx in-memory as a zip of XML parts — no library needed.
         $rows   = [];
-        $rows[] = [ 'word', 'explanation' ];
+        $rows[] = [ 'word', 'explanation', 'is_loanword', 'group' ];
         foreach ( $posts as $post ) {
-            $tooltip = get_post_meta( $post->ID, '_wpgt_tooltip_text', true );
+            $tooltip     = get_post_meta( $post->ID, '_wpgt_tooltip_text', true );
             if ( ! $tooltip ) $tooltip = $post->post_excerpt;
-            $rows[] = [ $post->post_title, $tooltip ];
+            $is_loanword = get_post_meta( $post->ID, '_wpgt_is_loanword', true ) ? 'yes' : 'no';
+            $group_terms = wp_get_post_terms( $post->ID, WPGT_Post_Type::GROUP_TAX, [ 'fields' => 'slugs' ] );
+            $groups_str  = ( ! is_wp_error( $group_terms ) && ! empty( $group_terms ) ) ? implode( ',', $group_terms ) : '';
+            $rows[] = [ $post->post_title, $tooltip, $is_loanword, $groups_str ];
         }
 
         $xlsx = self::build_xlsx( $rows );
@@ -2357,15 +2625,19 @@ class WPGT_Admin {
 
         // First row = header. Normalise cell text to find columns.
         $header   = array_map( fn( $h ) => strtolower( trim( (string) $h ) ), array_shift( $rows ) );
-        $col      = array_flip( $header );
-        $word_col = $col['word'] ?? $col['title'] ?? $col['term'] ?? $col['name'] ?? null;
-        $expl_col = $col['explanation'] ?? $col['tooltip_text'] ?? $col['definition'] ?? $col['description'] ?? $col['meaning'] ?? null;
+        $col       = array_flip( $header );
+        $word_col  = $col['word'] ?? $col['title'] ?? $col['term'] ?? $col['name'] ?? null;
+        $expl_col  = $col['explanation'] ?? $col['tooltip_text'] ?? $col['definition'] ?? $col['description'] ?? $col['meaning'] ?? null;
+        $loan_col  = $col['is_loanword'] ?? $col['loanword'] ?? $col['loan'] ?? null;
+        $group_col = $col['group'] ?? $col['groups'] ?? $col['glossary_group'] ?? $col['category'] ?? null;
 
-        // No recognised header — assume no header row, column 0 = word, column 1 = explanation
+        // No recognised header — assume col 0=word, col 1=explanation, col 2=is_loanword, col 3=group
         if ( $word_col === null ) {
             array_unshift( $rows, array_values( array_combine( $header, $header ) ) );
-            $word_col = 0;
-            $expl_col = 1;
+            $word_col  = 0;
+            $expl_col  = 1;
+            $loan_col  = 2;
+            $group_col = 3;
         }
 
         $created = 0;
@@ -2374,6 +2646,13 @@ class WPGT_Admin {
         foreach ( $rows as $row ) {
             $word        = isset( $row[ $word_col ] ) ? trim( $row[ $word_col ] ) : '';
             $explanation = ( $expl_col !== null && isset( $row[ $expl_col ] ) ) ? trim( $row[ $expl_col ] ) : '';
+            $loan_raw    = ( $loan_col !== null && isset( $row[ $loan_col ] ) ) ? strtolower( trim( $row[ $loan_col ] ) ) : '';
+            $is_loanword = in_array( $loan_raw, [ 'yes', '1', 'true', 'კი', 'да' ], true ) ? 1 : 0;
+            $group_raw   = ( $group_col !== null && isset( $row[ $group_col ] ) ) ? trim( $row[ $group_col ] ) : '';
+            // Parse comma-separated group slugs; create group taxonomy terms on the fly if needed
+            $group_slugs = $group_raw !== ''
+                ? array_filter( array_map( 'sanitize_key', array_map( 'trim', explode( ',', $group_raw ) ) ) )
+                : [];
 
             if ( $word === '' ) continue;
 
@@ -2412,6 +2691,22 @@ class WPGT_Admin {
 
             if ( $post_id && ! is_wp_error( $post_id ) ) {
                 update_post_meta( $post_id, '_wpgt_tooltip_text', sanitize_text_field( $explanation ) );
+                update_post_meta( $post_id, '_wpgt_is_loanword',  $is_loanword );
+
+                // Set Glossary Group taxonomy — create group terms on the fly if not yet existing
+                if ( ! empty( $group_slugs ) ) {
+                    $term_ids = [];
+                    foreach ( $group_slugs as $slug ) {
+                        $existing = get_term_by( 'slug', $slug, WPGT_Post_Type::GROUP_TAX );
+                        if ( $existing ) {
+                            $term_ids[] = $existing->term_id;
+                        } else {
+                            $new = wp_insert_term( $slug, WPGT_Post_Type::GROUP_TAX, [ 'slug' => $slug ] );
+                            if ( ! is_wp_error( $new ) ) $term_ids[] = $new['term_id'];
+                        }
+                    }
+                    wp_set_object_terms( $post_id, $term_ids, WPGT_Post_Type::GROUP_TAX );
+                }
             }
         }
 

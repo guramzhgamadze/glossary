@@ -4,6 +4,36 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class WPGT_Settings {
 
     const OPTION_KEY = 'wpgt_settings';
+    const RULES_KEY  = 'wpgt_cat_rules';   // category → group mapping
+
+    // ── Category Rules (separate option — variable-length, not fixed defaults) ──
+
+    /**
+     * Returns the category→group mapping.
+     * Format: [ cat_id (string) => [ group_slug, ... ] ]
+     * Empty array = no rules configured = backward-compat mode.
+     */
+    public static function get_cat_rules(): array {
+        $raw = get_option( self::RULES_KEY, [] );
+        return is_array( $raw ) ? $raw : [];
+    }
+
+    /**
+     * Save the category→group mapping.
+     * Expects [ cat_id => [ slug, ... ] ] — sanitizes slugs on the way in.
+     */
+    public static function update_cat_rules( array $rules ): bool {
+        $clean = [];
+        foreach ( $rules as $cat_id => $slugs ) {
+            $cat_id = (int) $cat_id;
+            if ( $cat_id < 1 ) continue;
+            $clean_slugs = array_values( array_filter( array_map( 'sanitize_key', (array) $slugs ) ) );
+            if ( ! empty( $clean_slugs ) ) {
+                $clean[ (string) $cat_id ] = $clean_slugs;
+            }
+        }
+        return update_option( self::RULES_KEY, $clean );
+    }
 
     public static function get_defaults(): array {
         return [

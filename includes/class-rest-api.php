@@ -173,6 +173,8 @@ class WPGT_REST_API {
         $categories = wp_get_post_terms( $post->ID, WPGT_Post_Type::LETTER_TAX, [ 'fields' => 'names' ] );
         $synonyms   = get_post_meta( $post->ID, '_wpgt_synonyms', true );
 
+        $is_loanword = (bool) get_post_meta( $post->ID, '_wpgt_is_loanword', true );
+
         return [
             'id'           => $post->ID,
             'title'        => $post->post_title,
@@ -182,6 +184,7 @@ class WPGT_REST_API {
             'url'          => get_permalink( $post->ID ),
             'synonyms'     => $synonyms ? array_map( 'trim', explode( ',', $synonyms ) ) : [],
             'categories'   => is_wp_error( $categories ) ? [] : $categories,
+            'is_loanword'  => $is_loanword,
             'date'         => $post->post_date,
             'modified'     => $post->post_modified,
         ];
